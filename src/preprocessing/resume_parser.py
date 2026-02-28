@@ -69,8 +69,9 @@ class ResumeParser:
         """
         bullets = []
         lines = text.split('\n')
-        # Regex for common bullets: dot, dash, star, etc.
-        bullet_pattern = re.compile(r'^(\s*[\u2022\u2023\u25E6\u2043\u2219\*\-\+]\s+)')
+        # Regex for common bullets: dots, dashes, stars, circles, etc.
+        # Added more Unicode bullet variants: ●○◆◇■□▪▫
+        bullet_pattern = re.compile(r'^(\s*[\u2022\u2023\u25E6\u2043\u2219\u25CF\u25CB\u25C6\u25C7\u25A0\u25A1\u25AA\u25AB\*\-\+•○●◆◇■□▪▫]\s+)')
         
         for line in lines:
             if bullet_pattern.match(line):
@@ -78,8 +79,11 @@ class ResumeParser:
                 clean_line = bullet_pattern.sub('', line).strip()
                 if clean_line:
                     bullets.append(clean_line)
-            # Handle also lines that look like list items but might not have bullet chars if structured well?
-            # For now strict bullet detection to avoid noise.
+            # Also detect numbered lists (1. 2. etc.)
+            elif re.match(r'^\s*\d+[\.\)]\s+', line):
+                clean_line = re.sub(r'^\s*\d+[\.\)]\s+', '', line).strip()
+                if clean_line:
+                    bullets.append(clean_line)
             
         return bullets
 
