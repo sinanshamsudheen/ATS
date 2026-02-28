@@ -154,3 +154,10 @@ cython_debug/
 # OS
 .DS_Store
 Thumbs.db
+
+# Project-specific
+models/huggingface_cache/
+models/fine-tuned/
+data/raw/*.pdf
+data/processed/*.jsonl
+*.pdf

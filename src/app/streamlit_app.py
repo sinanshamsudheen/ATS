@@ -11,120 +11,245 @@ from src.preprocessing.pdf_extractor import extract_text_from_pdf
 from src.preprocessing.resume_parser import ResumeParser
 from src.analysis.similarity import SimilarityAnalyzer
 from src.analysis.formatting_check import FormattingChecker
+from src.model.rewrite_engine import RewriteEngine
+from src.app.components.results_display import (
+    display_metrics_overview,
+    display_rewrite_summary,
+    display_missing_keywords,
+    display_formatting_issues,
+    display_loading_progress
+)
 from src.config import APP_TITLE, APP_VERSION
 
 # Page Config
-st.set_page_config(page_title=APP_TITLE, layout="wide")
+st.set_page_config(page_title=APP_TITLE, layout="wide", page_icon="📄")
+
+# Custom CSS for better UI
+st.markdown("""
+<style>
+    .main-header {
+        text-align: center;
+        padding: 20px 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        margin-bottom: 30px;
+    }
+    .stButton>button {
+        width: 100%;
+        background-color: #667eea;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+        padding: 12px;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #764ba2;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Title
-st.title(f"📄 {APP_TITLE} v{APP_VERSION}")
-st.markdown("Optimize your resume for Applicant Tracking Systems (ATS)")
+st.markdown(f"""
+<div class="main-header">
+    <h1>📄 {APP_TITLE}</h1>
+    <p style="margin: 0; font-size: 16px;">v{APP_VERSION} - AI-Powered Resume Optimizer</p>
+</div>
+""", unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
-    st.header("Instructions")
-    st.info("1. Upload your Resume (PDF)\n2. Paste the Job Description\n3. Click Analyze")
+    st.header("🚀 How It Works")
+    st.info("""
+    **Phase 2: LLM-Powered Optimization**
+    
+    1. 📤 Upload your Resume (PDF)
+    2. 📋 Paste the Job Description  
+    3. 🔍 Click "Analyze & Optimize"
+    4. ✨ Get AI-powered rewrite suggestions
+    """)
     
     st.divider()
-    st.caption("Powered by Local LLM & Embeddings")
+    
+    # Advanced Options
+    with st.expander("⚙️ Advanced Settings"):
+        enable_llm = st.checkbox("Enable AI Rewrites", value=True, 
+                                 help="Generate LLM-powered bullet point improvements")
+        only_weak_bullets = st.checkbox("Only Rewrite Weak Bullets", value=True,
+                                       help="Skip bullets that are already strong")
+    
+    st.divider()
+    st.caption("🤖 Powered by Phi-3-mini & Sentence Transformers")
+    st.caption("⚡ Phase 2: Generative AI Integration")
 
 # Main Interface
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("1. Upload Resume")
-    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+    st.subheader("1️⃣ Upload Resume")
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", 
+                                     help="Max 5MB, ATS-friendly format recommended")
     
 with col2:
-    st.subheader("2. Job Description")
-    job_description = st.text_area("Paste JD text here", height=200, placeholder="Copy specific job requirements here...")
+    st.subheader("2️⃣ Job Description")
+    job_description = st.text_area("Paste JD text here", height=200, 
+                                   placeholder="Paste the complete job description including requirements, responsibilities, and qualifications...")
+
+# Helper function for keyword extraction
+def simple_extract_keywords(text: str, max_keywords: int = 20):
+    """Simple keyword extractor (can be improved with KeyBERT later)."""
+    words = [w.strip() for w in text.split() if len(w) > 4]
+    # Remove duplicates while preserving some order
+    seen = set()
+    unique_words = []
+    for w in words:
+        if w.lower() not in seen:
+            seen.add(w.lower())
+            unique_words.append(w)
+    return unique_words[:max_keywords]
 
 # Analyze Button
-if st.button("Analyze Resume", type="primary"):
+st.markdown("---")
+col_analyze = st.columns([1, 2, 1])[1]  # Center the button
+
+with col_analyze:
+    analyze_button = st.button("🚀 Analyze & Optimize Resume", type="primary")
+
+if analyze_button:
     if not uploaded_file:
-        st.error("Please upload a resume first.")
+        st.error("❌ Please upload a resume first.")
     elif not job_description:
-        st.error("Please provide a Job Description.")
+        st.error("❌ Please provide a Job Description.")
     else:
-        with st.spinner("Analyzing... (This may take a moment to load models)"):
-            try:
-                # Save uploaded file temporarily
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
+        # Progress tracking
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        try:
+            # Save uploaded file temporarily
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_path = tmp_file.name
 
-                # 1. Processing
-                text = extract_text_from_pdf(tmp_path)
+            # Step 1: Extract text
+            status_text.info("📄 Extracting text from PDF...")
+            progress_bar.progress(10)
+            text = extract_text_from_pdf(tmp_path)
+            
+            # Step 2: Parse resume
+            status_text.info("🔍 Parsing resume structure...")
+            progress_bar.progress(20)
+            parser = ResumeParser()
+            parsed_data = parser.parse(text)
+            
+            # Step 3: Formatting check
+            status_text.info("📋 Checking ATS formatting...")
+            progress_bar.progress(30)
+            fmt_checker = FormattingChecker()
+            fmt_result = fmt_checker.check(tmp_path)
+            
+            # Step 4: Similarity analysis
+            status_text.info("🎯 Analyzing keyword match...")
+            progress_bar.progress(45)
+            analyzer = SimilarityAnalyzer()
+            jd_keywords = simple_extract_keywords(job_description)
+            keyword_analysis = analyzer.analyze_keywords(text, jd_keywords)
+            overall_match = analyzer.calculate_overall_match(text, job_description)
+            
+            # Step 5: LLM-powered rewrite suggestions (if enabled)
+            rewrite_results = None
+            if enable_llm:
+                status_text.info("🤖 Loading AI model for rewrite suggestions... (This may take a moment)")
+                progress_bar.progress(60)
                 
-                # 2. Parsing
-                parser = ResumeParser()
-                parsed_data = parser.parse(text)
+                rewrite_engine = RewriteEngine()
                 
-                # 3. Formatting Check
-                fmt_checker = FormattingChecker()
-                fmt_result = fmt_checker.check(tmp_path)
+                status_text.info("✨ Generating AI-powered improvements...")
+                progress_bar.progress(75)
                 
-                # 4. Analysis
-                analyzer = SimilarityAnalyzer() # This loads model, might be slow first time
+                rewrite_results = rewrite_engine.analyze_resume_sections(
+                    parsed_data,
+                    job_description
+                )
+            
+            # Cleanup
+            os.unlink(tmp_path)
+            
+            # Complete
+            progress_bar.progress(100)
+            status_text.success("✅ Analysis complete!")
+            
+            # --- Results Display ---
+            st.markdown("---")
+            
+            # Calculate bullet quality score if LLM was used
+            bullet_quality_score = 0
+            if rewrite_results:
+                bullet_quality_score = rewrite_results.get("overall_stats", {}).get("average_score", 0)
+            else:
+                # Fallback: use simple heuristic based on other scores
+                bullet_quality_score = (overall_match + keyword_analysis['score']) / 2
+            
+            # Display overview metrics
+            display_metrics_overview(
+                overall_match=overall_match,
+                keyword_score=keyword_analysis['score'],
+                formatting_score=fmt_result['score'],
+                bullet_quality_score=bullet_quality_score
+            )
+            
+            st.markdown("---")
+            
+            # Tabbed interface for detailed results
+            if enable_llm and rewrite_results:
+                tabs = st.tabs(["🎯 AI Rewrites", "🔑 Keywords", "📋 Formatting", "📊 Raw Data"])
                 
-                # Extract keywords from JD (Simplified assumption: JD is text, we compare text vs text mostly, 
-                # but for keywords we might need a keyword extractor. 
-                # For MVP, let's treat top frequent words or just use simple string splitting logic, 
-                # OR just rely on SimilarityAnalyzer's full text match for now if keyword extraction isn't built.
-                # PRD said "Identify missing keywords". We implemented `analyze_keywords`.
-                # But we need a `jd_keywords` list. 
-                # Let's add a simple keyword extractor helper for MVP in this block.
+                with tabs[0]:
+                    display_rewrite_summary(rewrite_results)
                 
-                def simple_extract_keywords(text):
-                    # Very naive extractor for MVP demo
-                    # In real app, use KeyBERT or similar
-                    words = [w.strip() for w in text.split() if len(w) > 4]
-                    return list(set(words))[:20] # Take first 20 unique long words (dumb heuristic)
-
-                jd_keywords = simple_extract_keywords(job_description)
+                with tabs[1]:
+                    display_missing_keywords(
+                        keyword_analysis["missing"],
+                        keyword_analysis["matched"]
+                    )
                 
-                keyword_analysis = analyzer.analyze_keywords(text, jd_keywords)
-                overall_match = analyzer.calculate_overall_match(text, job_description)
-
-                # Cleanup
-                os.unlink(tmp_path)
-
-                # --- Results Display ---
-                st.divider()
-                st.header("Analysis Results")
+                with tabs[2]:
+                    display_formatting_issues(fmt_result)
                 
-                # Metrics Row
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Overall Match", f"{overall_match}%", delta_color="normal")
-                m2.metric("Keyword Coverage", f"{keyword_analysis['score']}%")
-                m3.metric("Formatting Score", f"{fmt_result['score']}/100")
+                with tabs[3]:
+                    st.subheader("Parsed Resume Data")
+                    st.json(parsed_data)
+            
+            else:
+                # Simplified view without LLM
+                tabs = st.tabs(["🔑 Keywords", "📋 Formatting", "📊 Resume Content"])
                 
-                # Detailed View
-                tab1, tab2, tab3 = st.tabs(["Missing Keywords", "Formatting Issues", "Resume Content"])
+                with tabs[0]:
+                    display_missing_keywords(
+                        keyword_analysis["missing"],
+                        keyword_analysis["matched"]
+                    )
                 
-                with tab1:
-                    if keyword_analysis["missing"]:
-                        st.warning(f"Missing {len(keyword_analysis['missing'])} potential keywords:")
-                        st.write(", ".join(keyword_analysis["missing"]))
-                    else:
-                        st.success("Great! No obvious missing keywords found based on simple heuristic.")
-                        
-                with tab2:
-                    if fmt_result["issues"]:
-                        for issue in fmt_result["issues"]:
-                            if issue["type"] == "critical":
-                                st.error(issue["message"])
-                            elif issue["type"] == "high":
-                                st.error(issue["message"])
-                            else:
-                                st.warning(issue["message"])
-                    else:
-                        st.success("Formatting looks good!")
-                        
-                with tab3:
+                with tabs[1]:
+                    display_formatting_issues(fmt_result)
+                
+                with tabs[2]:
+                    st.subheader("Parsed Resume Data")
                     st.json(parsed_data)
 
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
+        except Exception as e:
+            st.error(f"❌ An error occurred: {str(e)}")
+            
+            with st.expander("🐛 Debug Information"):
                 import traceback
-                st.text(traceback.format_exc())
+                st.code(traceback.format_exc())
+
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; color: gray; padding: 20px;">
+    <p>Built with ❤️ using Streamlit, Phi-3-mini, and Sentence Transformers</p>
+    <p style="font-size: 12px;">Phase 2: Generative AI Intelligence & Model Integration</p>
+</div>
+""", unsafe_allow_html=True)

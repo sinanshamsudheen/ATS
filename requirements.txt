@@ -1,10 +1,23 @@
+# Core ML/NLP (Phase 1 - Embeddings & Similarity)
 torch>=2.0.0
-transformers>=4.35.0
 sentence-transformers>=2.2.0
-PyMuPDF>=1.23.0
-pandas>=2.0.0
-numpy>=1.24.0
 scikit-learn>=1.3.0
+numpy>=1.24.0
+
+# PDF Processing
+PyMuPDF>=1.23.0
+
+# Data Processing
+pandas>=2.0.0
+
+# LLM Integration (Phase 2 - OpenAI API)
+openai>=1.0.0
+
+# Web Framework
 streamlit>=1.28.0
+
+# Utilities
 python-dotenv>=1.0.0
+
+# Testing
 pytest>=7.0.0
