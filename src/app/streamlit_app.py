@@ -7,11 +7,12 @@ from pathlib import Path
 # Add project root to path for imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from src.preprocessing.pdf_extractor import extract_text_from_pdf
-from src.preprocessing.resume_parser import ResumeParser
-from src.analysis.similarity import SimilarityAnalyzer
-from src.analysis.formatting_check import FormattingChecker
-from src.model.rewrite_engine import RewriteEngine
+from src.parsing.pdf_extractor import extract_text_from_pdf
+from src.parsing.resume_parser import ResumeParser
+from src.parsing.jd_parser import extract_keywords
+from src.scoring.similarity_engine import SimilarityAnalyzer
+from src.scoring.formatting_check import FormattingChecker
+from src.rewriting.bullet_rewriter import BulletRewriter
 from src.app.components.results_display import (
     display_metrics_overview,
     display_rewrite_summary,
@@ -62,8 +63,6 @@ st.markdown(f"""
 with st.sidebar:
     st.header("🚀 How It Works")
     st.info("""
-    **Phase 2: LLM-Powered Optimization**
-    
     1. 📤 Upload your Resume (PDF)
     2. 📋 Paste the Job Description  
     3. 🔍 Click "Analyze & Optimize"
@@ -81,7 +80,7 @@ with st.sidebar:
     
     st.divider()
     st.caption("🤖 Powered by Phi-3-mini & Sentence Transformers")
-    st.caption("⚡ Phase 2: Generative AI Integration")
+    st.caption("⚡ Local Phi-3 LoRA Fine-Tuned")
 
 # Main Interface
 col1, col2 = st.columns(2)
@@ -95,19 +94,6 @@ with col2:
     st.subheader("2️⃣ Job Description")
     job_description = st.text_area("Paste JD text here", height=200, 
                                    placeholder="Paste the complete job description including requirements, responsibilities, and qualifications...")
-
-# Helper function for keyword extraction
-def simple_extract_keywords(text: str, max_keywords: int = 20):
-    """Simple keyword extractor (can be improved with KeyBERT later)."""
-    words = [w.strip() for w in text.split() if len(w) > 4]
-    # Remove duplicates while preserving some order
-    seen = set()
-    unique_words = []
-    for w in words:
-        if w.lower() not in seen:
-            seen.add(w.lower())
-            unique_words.append(w)
-    return unique_words[:max_keywords]
 
 # Analyze Button
 st.markdown("---")
@@ -153,7 +139,7 @@ if analyze_button:
             status_text.info("🎯 Analyzing keyword match...")
             progress_bar.progress(45)
             analyzer = SimilarityAnalyzer()
-            jd_keywords = simple_extract_keywords(job_description)
+            jd_keywords = extract_keywords(job_description)
             keyword_analysis = analyzer.analyze_keywords(text, jd_keywords)
             overall_match = analyzer.calculate_overall_match(text, job_description)
             
@@ -163,7 +149,7 @@ if analyze_button:
                 status_text.info("🤖 Loading AI model for rewrite suggestions... (This may take a moment)")
                 progress_bar.progress(60)
                 
-                rewrite_engine = RewriteEngine()
+                rewrite_engine = BulletRewriter()
                 
                 status_text.info("✨ Generating AI-powered improvements...")
                 progress_bar.progress(75)
@@ -250,6 +236,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: gray; padding: 20px;">
     <p>Built with ❤️ using Streamlit, Phi-3-mini, and Sentence Transformers</p>
-    <p style="font-size: 12px;">Phase 2: Generative AI Intelligence & Model Integration</p>
+    <p style="font-size: 12px;">Powered by Phi-3-mini LoRA fine-tuning & Sentence Transformers</p>
 </div>
 """, unsafe_allow_html=True)

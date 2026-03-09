@@ -1,0 +1,59 @@
+# Training Configuration for ATS Phi Fine-Tuning (Google Colab)
+# ==============================================================
+
+# Model
+model_name: "microsoft/phi-3-mini-4k-instruct"
+fallback_model: "microsoft/phi-2"
+
+# Quantization
+use_4bit: true
+bnb_4bit_compute_dtype: "float16"
+bnb_4bit_quant_type: "nf4"
+use_double_quant: true
+
+# Training hyperparameters
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 2
+gradient_accumulation_steps: 8
+learning_rate: 2.0e-4
+num_train_epochs: 3
+warmup_steps: 100
+logging_steps: 10
+eval_steps: 50
+save_steps: 100
+
+# Optimizer and scheduler
+optim: "adamw_torch"
+lr_scheduler_type: "linear"
+weight_decay: 0.01
+
+# Gradient checkpointing
+gradient_checkpointing: true
+
+# Sequence length
+max_seq_length: 2048
+
+# Output (relative to colab/ folder)
+output_dir: "ats_phi_lora"
+logging_dir: "ats_phi_lora/logs"
+
+# Mixed precision
+fp16: true
+bf16: false
+
+# Misc
+seed: 42
+report_to: "none"
+save_total_limit: 3
+load_best_model_at_end: true
+evaluation_strategy: "steps"
+save_strategy: "steps"
+
+# Dataset paths (relative to colab/ folder)
+train_dataset: "data/train.json"
+validation_dataset: "data/validation.json"
+raw_dataset: "data/raw_dataset.json"
+
+# Dataset split
+train_split: 0.9
+validation_split: 0.1

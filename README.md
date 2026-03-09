@@ -1,271 +1,125 @@
-# ATS Resume Compliance Checker & Optimizer
+# ATS Resume Compliance Checker
 
-A web-based AI-powered tool that helps job seekers optimize their resumes for Applicant Tracking Systems (ATS). This application analyzes PDF resumes against job descriptions to provide compatibility scores, detect missing keywords, and offer **actionable AI-powered rewrite suggestions** using semantic analysis and generative AI.
+AI-powered resume optimiser that scores resumes against job descriptions, identifies missing keywords, flags formatting issues, and suggests bullet-point improvements.
 
-**🎯 Current Version:** 2.0.0 - **Phase 2 Complete** (LLM-Powered Optimizer)
+## Features
 
-## ✨ Features
+- **PDF Parsing** — extract and clean text from any PDF resume.
+- **Keyword Matching** — semantic similarity between resume and JD using sentence-transformers.
+- **Formatting Audit** — detect ATS-unfriendly elements (images, encryption, low text density).
+- **Bullet Quality Analysis** — heuristic scoring for action verbs, metrics, and specificity.
+- **LoRA Fine-Tuning** — fine-tune a Phi-3-mini model on synthetic ATS data using 4-bit QLoRA.
+- **Streamlit UI** — upload a PDF, paste a JD, and get instant analysis.
 
-### Phase 1: Core Analysis (✅ Complete)
-- **Resume Parsing**: Extracts text and segments resumes into standard sections (Experience, Education, Skills, etc.)
-- **Smart Analysis**:
-    - **Keyword Matching**: Identifies missing critical skills using semantic similarity (Embeddings)
-    - **Formatting Checks**: Flags ATS-unfriendly elements like tables, images, and encryption
-    - **Scoring**: Calculates an overall match score based on content relevance and formatting
-- **Interactive Dashboard**: User-friendly Streamlit interface for instant feedback
-
-### Phase 2: AI-Powered Optimization (✅ Complete)
-- **🤖 LLM-Powered Rewrites**: Uses Phi-3-mini to generate improved bullet points
-- **Quality Analysis**: Scores each bullet point (0-100) based on:
-  - Action verb strength
-  - Quantifiable metrics
-  - Specificity vs. genericity
-  - Optimal length
-- **Side-by-Side Comparison**: See original vs. improved versions with detailed analysis
-- **Smart Detection**: Automatically identifies weak bullet points that need improvement
-- **Batch Processing**: Analyzes all resume sections efficiently
-
-## 🛠 Tech Stack
-
-- **Python 3.9+**
-- **Frontend**: Streamlit with custom CSS
-- **PDF Processing**: PyMuPDF (fitz)
-- **NLP/ML**: 
-    - `sentence-transformers` (all-MiniLM-L6-v2) for embeddings
-    - `scikit-learn` for cosine similarity
-    - **Phi-3-mini** (microsoft/Phi-3-mini-4k-instruct) for rewrite generation
-    - `transformers` + `bitsandbytes` for 4-bit quantization
-- **Analysis Engine**: Custom heuristics + LLM prompting
-
-## 📦 Installation
-
-### Prerequisites
-- Python 3.9 or higher
-- 8GB+ RAM recommended (16GB+ for GPU inference)
-- Optional: CUDA-compatible GPU for faster LLM inference
-
-### Setup Steps
-
-1. **Clone the repository** (if applicable)
-   ```bash
-   git clone <repository_url>
-   cd ATS
-   ```
-
-2. **Create a virtual environment** (Recommended)
-   ```bash
-   # Using venv
-   python -m venv venv
-   
-   # Activate on Windows
-   .\venv\Scripts\Activate.ps1
-   
-   # Activate on Linux/Mac
-   source venv/bin/activate
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-   
-   **Note:** First run will download ~4GB of models:
-   - Phi-3-mini (~2.3GB after quantization)
-   - all-MiniLM-L6-v2 (~80MB)
-
-## 🚀 Usage
-
-### Running the Application
-
-1. **Activate your virtual environment** (if not already active)
-   ```bash
-   # Windows
-   .\venv\Scripts\Activate.ps1
-   
-   # Linux/Mac
-   source venv/bin/activate
-   ```
-
-2. **Run the Streamlit app**
-   ```bash
-   streamlit run src/app/streamlit_app.py
-   ```
-
-3. **Open in browser**
-   - The app will automatically open at `http://localhost:8501`
-   - If not, navigate to the URL shown in the terminal
-
-### Analyzing a Resume
-
-1. **Upload Resume**: Click "Choose a PDF file" and select your resume
-2. **Paste Job Description**: Copy the full JD text into the text area
-3. **Configure Options** (in sidebar):
-   - Toggle "Enable AI Rewrites" for LLM-powered suggestions
-   - Toggle "Only Rewrite Weak Bullets" to focus on weak points
-4. **Click "Analyze & Optimize Resume"**
-5. **View Results**:
-   - **AI Rewrites Tab**: See bullet-by-bullet improvements
-   - **Keywords Tab**: Check missing and matched keywords
-   - **Formatting Tab**: Review ATS compatibility issues
-   - **Raw Data Tab**: Inspect parsed resume structure
-
-### First Run Note
-⏳ **Model loading takes 30-60 seconds on first run.** Subsequent analyses are faster due to caching.
-
-## 📂 Project Structure
+## Project Structure
 
 ```
 ATS/
-├── plan.md                          # 3-Phase Implementation Plan
-├── PRD.md                           # Product Requirements Document  
-├── progress.md                      # Phase 2 Implementation Progress
-├── requirements.txt                 # Python Dependencies
-├── README.md                        # This file
-│
-├── src/
-│   ├── config.py                    # Central Configuration
-│   │
-│   ├── preprocessing/               # PDF & Text Processing
-│   │   ├── pdf_extractor.py         # PyMuPDF-based extraction
-│   │   └── resume_parser.py         # Section & bullet parsing
-│   │
-│   ├── analysis/                    # Core Analysis Modules
-│   │   ├── embeddings.py            # Sentence transformer wrapper
-│   │   ├── similarity.py            # Keyword matching & scoring
-│   │   └── formatting_check.py      # ATS formatting validation
-│   │
-│   ├── model/                       # 🆕 LLM & Rewrite Engine
-│   │   ├── llm_inference.py         # Phi-3-mini wrapper (4-bit)
-│   │   └── rewrite_engine.py        # Quality analysis + rewrites
-│   │
-│   └── app/                         # Streamlit Application
-│       ├── streamlit_app.py         # Main app (Phase 2 enhanced)
-│       └── components/              # 🆕 UI Components
-│           └── results_display.py   # Enhanced results visualization
-│
+├── configs/
+│   ├── lora_config.yaml          # LoRA hyperparameters
+│   └── training_config.yaml      # Training & model settings
 ├── data/
-│   ├── README.md                    # Data structure documentation
-│   ├── processed/                   # Training data samples
-│   │   └── sample_training_data.jsonl
-│   └── raw/                         # Raw data (user-provided)
-│
+│   ├── raw_dataset.json          # 200 synthetic samples
+│   ├── train.json                # 180 training samples
+│   └── validation.json           # 20 validation samples
 ├── models/
-│   └── fine-tuned/                  # Future: LoRA adapters
-│
-└── tests/                           # Unit tests (TODO)
+│   ├── ats_phi_lora/             # Saved LoRA adapter (after training)
+│   └── huggingface_cache/        # Cached sentence-transformers model
+├── notebooks/
+│   ├── 01_environment_setup.ipynb
+│   ├── 02_dataset_preparation.ipynb
+│   ├── 03_model_loading_and_lora_setup.ipynb
+│   ├── 04_fine_tuning_training.ipynb
+│   ├── 05_inference_testing.ipynb
+│   └── 06_evaluation_metrics.ipynb
+├── scripts/
+│   ├── generate_dataset.py       # Generate synthetic ATS dataset
+│   ├── prepare_dataset.py        # Validate, format & split dataset
+│   ├── train_model.py            # Train Phi + LoRA
+│   └── run_inference.py          # Run inference with fine-tuned model
+├── src/
+│   ├── config.py                 # Central configuration
+│   ├── parsing/
+│   │   ├── pdf_extractor.py      # PDF → text (PyMuPDF)
+│   │   ├── resume_parser.py      # Text → structured sections
+│   │   └── jd_parser.py          # JD keyword extraction
+│   ├── scoring/
+│   │   ├── embeddings.py         # SentenceTransformer embeddings
+│   │   ├── similarity_engine.py  # Semantic keyword matching
+│   │   └── formatting_check.py   # ATS format compliance
+│   ├── rewriting/
+│   │   └── bullet_rewriter.py    # Heuristic bullet analysis
+│   ├── training/
+│   │   ├── dataset_loader.py     # Dataset prep functions
+│   │   └── lora_training.py      # LoRA training pipeline
+│   ├── inference/
+│   │   └── generate_report.py    # Model loading & generation
+│   └── app/
+│       ├── streamlit_app.py      # Streamlit web UI
+│       └── components/
+│           └── results_display.py
+├── requirements.txt
+└── .gitignore
 ```
 
-## 🎯 How It Works
+## Quick Start
 
-### Analysis Pipeline
-
-```
-1. PDF Upload → Extract Text (PyMuPDF)
-2. Parse Resume → Section Detection + Bullet Extraction
-3. Format Check → ATS Compatibility Scan
-4. Similarity Analysis → Keyword Matching (Embeddings)
-5. 🆕 LLM Analysis → Quality Scoring + Rewrites
-6. Results Display → Interactive Dashboard
-```
-
-### Quality Scoring Heuristics
-
-Each bullet point is scored 0-100 based on:
-- ✅ **Action Verb**: Starts with strong verb (led, built, achieved)
-- ✅ **Metrics**: Contains numbers, percentages, or quantifiable data
-- ✅ **Length**: 5-40 words (optimal range)
-- ✅ **Specificity**: Avoids generic phrases ("responsible for", "helped with")
-
-### LLM Rewrite Process
-
-1. **Detection**: Identify bullets scoring <70
-2. **Contextualization**: Pass bullet + JD to Phi-3-mini
-3. **Generation**: LLM suggests improved version with reasoning
-4. **Display**: Show side-by-side comparison with copy button
-
-## ⚙️ Configuration
-
-Edit `src/config.py` to customize:
-
-```python
-# LLM Settings
-LLM_MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
-LLM_TEMPERATURE = 0.7          # Lower = more deterministic
-USE_QUANTIZATION = True        # 4-bit for memory efficiency
-
-# Quality Thresholds
-WEAK_BULLET_MIN_WORDS = 5
-WEAK_BULLET_MAX_WORDS = 40
-SIMILARITY_THRESHOLD = 0.3     # Keyword matching sensitivity
-```
-
-## 🧪 Testing Phase 2
-
-To validate the LLM integration:
+### 1. Install dependencies
 
 ```bash
-# Test LLM loading (interactive Python)
-python
->>> from src.model.llm_inference import get_llm
->>> llm = get_llm()  # Should load without errors
->>> result = llm.analyze_bullet("Worked on projects")
->>> print(result)
+pip install -r requirements.txt
 ```
 
-## 📊 Performance
+### 2. Run the Streamlit app
 
-### Expected Inference Times
-- **Embedding Generation**: 0.5-2 seconds
-- **Formatting Check**: 0.1-0.5 seconds
-- **LLM Rewrites** (5 bullets):
-  - CPU (4-bit): 20-40 seconds
-  - GPU (4-bit): 5-15 seconds
+```bash
+streamlit run src/app/streamlit_app.py
+```
 
-### Memory Requirements
-- **Without LLM**: ~500MB
-- **With LLM (4-bit)**: ~3-4GB
-- **With LLM (16-bit)**: ~8-10GB
+Upload a PDF resume, paste a job description, and click **Analyze & Optimize**.
 
-## 🚧 Roadmap
+## Fine-Tuning Pipeline
 
-### Phase 3: Production Polish (Next)
-- [ ] Comprehensive testing suite
-- [ ] Performance optimization (async processing)
-- [ ] PDF export of optimized resume
-- [ ] Enhanced error handling
-- [ ] Deployment configuration (Docker)
+### Generate & prepare dataset
 
-### Future Enhancements
-- [ ] Fine-tune Phi-3-mini on production data
-- [ ] Industry-specific prompts
-- [ ] Multi-language support
-- [ ] Browser extension
-- [ ] API endpoints
+```bash
+python scripts/generate_dataset.py   # → data/raw_dataset.json (200 samples)
+python scripts/prepare_dataset.py    # → data/train.json + data/validation.json
+```
 
-## 🤝 Contributing
+### Train (requires GPU)
 
-Please follow the `plan.md` phases for contribution.  
-**Current Status:** Phase 2 Complete, Phase 3 Ready to Start
+```bash
+python scripts/train_model.py
+```
 
-### Development Setup
-1. Fork the repository
-2. Create a feature branch
-3. Follow existing code style
-4. Add tests for new features
-5. Submit a pull request
+Saves the LoRA adapter to `models/ats_phi_lora/`.
 
-## 📝 License
+### Inference
 
-MIT License - See LICENSE file for details
+```bash
+python scripts/run_inference.py --resume path/to/resume.txt --job-desc path/to/jd.txt
+```
 
-## 🙏 Acknowledgments
+Or use the interactive notebooks in `notebooks/` for step-by-step exploration.
 
-- **Models Used**:
-  - [microsoft/Phi-3-mini](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
-  - [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
-- **Frameworks**: Streamlit, Hugging Face Transformers
-- **Course**: AMT302 - Concepts in Natural Language Processing
+## Model Details
 
----
+| Setting | Value |
+|---|---|
+| Base model | `microsoft/phi-3-mini-4k-instruct` (3.8 B) |
+| Fallback | `microsoft/phi-2` (2.7 B) |
+| Quantisation | 4-bit NF4 + double quant |
+| LoRA rank | 16 |
+| LoRA alpha | 32 |
+| Target modules | q_proj, v_proj, k_proj, o_proj |
+| Effective batch size | 16 (2 × 8 grad accum) |
+| Learning rate | 2 × 10⁻⁴ |
 
-**Built with ❤️ for job seekers everywhere**
+## Tech Stack
+
+- **Transformers / PEFT / bitsandbytes** — model loading, LoRA, quantisation
+- **Sentence-Transformers** — semantic embeddings (all-MiniLM-L6-v2)
+- **PyMuPDF** — PDF text extraction
+- **Streamlit** — web interface
+- **scikit-learn** — cosine similarity
