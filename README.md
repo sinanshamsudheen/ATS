@@ -8,6 +8,8 @@ AI-powered resume optimiser that scores resumes against job descriptions, identi
 - **Keyword Matching** — semantic similarity between resume and JD using sentence-transformers.
 - **Formatting Audit** — detect ATS-unfriendly elements (images, encryption, low text density).
 - **Bullet Quality Analysis** — heuristic scoring for action verbs, metrics, and specificity.
+- **Groq LLM Integration** — fast cloud inference using Llama 3.1 8B via Groq API.
+- **Multi-Backend Embeddings** — automatic fallback: SentenceTransformers → HuggingFace → OpenAI.
 - **LoRA Fine-Tuning** — fine-tune Phi-3-Mini on synthetic ATS data using 4-bit QLoRA.
 - **Streamlit UI** — upload a PDF, paste a JD, and get instant analysis.
 
@@ -46,7 +48,7 @@ ATS/
 │   │   ├── resume_parser.py            # Text → structured sections
 │   │   └── jd_parser.py               # JD keyword extraction
 │   ├── scoring/
-│   │   ├── embeddings.py               # SentenceTransformer embeddings
+│   │   ├── embeddings.py               # Multi-backend embeddings (ST/HF/OpenAI)
 │   │   ├── similarity_engine.py        # Semantic keyword matching
 │   │   └── formatting_check.py         # ATS format compliance
 │   ├── rewriting/
@@ -55,7 +57,8 @@ ATS/
 │   │   ├── dataset_loader.py           # Dataset prep functions
 │   │   └── lora_training.py            # LoRA training pipeline
 │   ├── inference/
-│   │   └── generate_report.py          # Model loading & generation
+│   │   ├── generate_report.py          # Local Phi-3 model loading & generation
+│   │   └── groq_inference.py           # Groq + Llama 3.1 cloud inference
 │   └── app/
 │       ├── streamlit_app.py            # Streamlit web UI
 │       └── components/
@@ -72,7 +75,19 @@ ATS/
 pip install -r requirements.txt
 ```
 
-### 2. Run the Streamlit app
+### 2. Configure API keys
+
+Create a `.env` file in the project root:
+
+```env
+GROQ_API_KEY=gsk_your_groq_api_key_here
+# Optional: OpenAI fallback for embeddings
+OPENAI_API_KEY=sk_your_openai_key_here
+```
+
+Get your Groq API key from [console.groq.com/keys](https://console.groq.com/keys).
+
+### 3. Run the Streamlit app
 
 ```bash
 streamlit run src/app/streamlit_app.py
@@ -129,9 +144,55 @@ python scripts/run_inference.py --resume path/to/resume.txt --job-desc path/to/j
 
 ## Tech Stack
 
+- **Groq** — fast LLM inference (Llama 3.1 8B)
 - **Transformers / PEFT / bitsandbytes** — model loading, LoRA, 4-bit quantisation
-- **Sentence-Transformers** — semantic embeddings (`all-MiniLM-L6-v2`)
+- **Sentence-Transformers / HuggingFace** — semantic embeddings (`all-MiniLM-L6-v2`)
+- **OpenAI** — optional embedding fallback
 - **PyMuPDF** — PDF text extraction
 - **Streamlit** — web interface
 - **scikit-learn** — cosine similarity
 - **Datasets / Accelerate** — training data pipeline and distributed training support
+- **python-dotenv** — environment variable management
+
+## Embedding Backends
+
+The app automatically selects the best available embedding backend:
+
+| Priority | Backend | Requirements |
+|----------|---------|-------------|
+| 1 | SentenceTransformers | `sentence-transformers` installed |
+| 2 | HuggingFace Direct | `transformers` installed (automatic fallback) |
+| 3 | OpenAI API | `OPENAI_API_KEY` set in `.env` |
+
+## LLM Inference
+
+| Mode | Model | Requirements |
+|------|-------|-------------|
+| **Cloud (default)** | Llama 3.1 8B via Groq | `GROQ_API_KEY` in `.env` |
+| Local (optional) | Phi-3-mini + LoRA | GPU with 8GB+ VRAM |
+
+---
+
+## Changelog
+
+### v0.2.0 — Cloud Inference & Embedding Fallbacks
+
+**New Features:**
+- **Groq LLM Integration** — Switched from local Phi-3 inference to Groq cloud API with Llama 3.1 8B for faster, GPU-free analysis.
+- **Multi-Backend Embeddings** — Added 3-tier fallback system (SentenceTransformers → HuggingFace Direct → OpenAI) to handle dependency conflicts gracefully.
+- **Environment Configuration** — Added `.env` support via `python-dotenv` for secure API key management.
+
+**Files Changed:**
+| File | Change |
+|------|--------|
+| `src/inference/groq_inference.py` | **NEW** — Groq API client with retry logic and rate limiting |
+| `src/scoring/embeddings.py` | Rewritten with multi-backend fallback system |
+| `src/config.py` | Added `GROQ_API_KEY`, `GROQ_MODEL`, OpenAI config, dotenv loading |
+| `src/app/streamlit_app.py` | Updated to use Groq; shows connection status in sidebar |
+| `requirements.txt` | Added `groq>=0.4.0`, `openai>=1.0.0`, `python-dotenv>=1.0.0` |
+| `.gitignore` | Added `sample/` folder for test files |
+
+**Migration Notes:**
+1. Create a `.env` file with your `GROQ_API_KEY`
+2. Optionally add `OPENAI_API_KEY` for embedding fallback
+3. No GPU required — all inference runs via Groq cloud
