@@ -18,9 +18,17 @@ from src.app.components.results_display import (
     display_rewrite_summary,
     display_missing_keywords,
     display_formatting_issues,
-    display_loading_progress
+    display_loading_progress,
+    display_llm_ats_report,
 )
-from src.config import APP_TITLE, APP_VERSION
+from src.config import APP_TITLE, APP_VERSION, BASE_MODEL_NAME, LORA_ADAPTER_PATH
+
+
+@st.cache_resource(show_spinner=False)
+def load_phi_model(use_4bit: bool = False):
+    """Load the fine-tuned Phi-3 LoRA model once and cache it across reruns."""
+    from src.inference.generate_report import load_model
+    return load_model(BASE_MODEL_NAME, LORA_ADAPTER_PATH, use_4bit=use_4bit)
 
 # Page Config
 st.set_page_config(page_title=APP_TITLE, layout="wide", page_icon="📄")
@@ -77,6 +85,8 @@ with st.sidebar:
                                  help="Generate LLM-powered bullet point improvements")
         only_weak_bullets = st.checkbox("Only Rewrite Weak Bullets", value=True,
                                        help="Skip bullets that are already strong")
+        use_4bit = st.checkbox("4-bit Quantization (requires CUDA + bitsandbytes)", value=False,
+                               help="Reduces VRAM usage. Leave off unless you have a CUDA GPU with bitsandbytes installed.")
     
     st.divider()
     st.caption("🤖 Powered by Phi-3-mini & Sentence Transformers")
@@ -143,17 +153,25 @@ if analyze_button:
             keyword_analysis = analyzer.analyze_keywords(text, jd_keywords)
             overall_match = analyzer.calculate_overall_match(text, job_description)
             
-            # Step 5: LLM-powered rewrite suggestions (if enabled)
+            # Step 5: Fine-tuned model inference + heuristic rewrite analysis
             rewrite_results = None
+            llm_report = None
             if enable_llm:
-                status_text.info("🤖 Loading AI model for rewrite suggestions... (This may take a moment)")
+                status_text.info("🤖 Loading fine-tuned Phi-3 model... (first load may take a minute)")
                 progress_bar.progress(60)
-                
+
+                try:
+                    model, tokenizer = load_phi_model(use_4bit)
+                    status_text.info("✨ Running fine-tuned model inference...")
+                    progress_bar.progress(70)
+                    from src.inference.generate_report import generate as phi_generate
+                    llm_report = phi_generate(model, tokenizer, text, job_description)
+                except Exception as _llm_err:
+                    st.warning(f"⚠️ Fine-tuned model inference failed: {_llm_err}")
+
                 rewrite_engine = BulletRewriter()
-                
-                status_text.info("✨ Generating AI-powered improvements...")
-                progress_bar.progress(75)
-                
+                status_text.info("📝 Analyzing bullet quality...")
+                progress_bar.progress(80)
                 rewrite_results = rewrite_engine.analyze_resume_sections(
                     parsed_data,
                     job_description
@@ -171,7 +189,9 @@ if analyze_button:
             
             # Calculate bullet quality score if LLM was used
             bullet_quality_score = 0
-            if rewrite_results:
+            if llm_report and llm_report.get("valid_json"):
+                bullet_quality_score = llm_report.get("score_breakdown", {}).get("bullet_quality", 0)
+            elif rewrite_results:
                 bullet_quality_score = rewrite_results.get("overall_stats", {}).get("average_score", 0)
             else:
                 # Fallback: use simple heuristic based on other scores
@@ -188,22 +208,31 @@ if analyze_button:
             st.markdown("---")
             
             # Tabbed interface for detailed results
-            if enable_llm and rewrite_results:
-                tabs = st.tabs(["🎯 AI Rewrites", "🔑 Keywords", "📋 Formatting", "📊 Raw Data"])
+            if enable_llm and (rewrite_results or llm_report):
+                tabs = st.tabs(["🤖 AI Report", "🎯 Bullet Rewrites", "🔑 Keywords", "📋 Formatting", "📊 Raw Data"])
                 
                 with tabs[0]:
-                    display_rewrite_summary(rewrite_results)
+                    if llm_report:
+                        display_llm_ats_report(llm_report)
+                    else:
+                        st.info("Fine-tuned model report unavailable. Check the Bullet Rewrites tab for heuristic analysis.")
                 
                 with tabs[1]:
+                    if rewrite_results:
+                        display_rewrite_summary(rewrite_results)
+                    else:
+                        st.info("No bullet rewrite results available.")
+                
+                with tabs[2]:
                     display_missing_keywords(
                         keyword_analysis["missing"],
                         keyword_analysis["matched"]
                     )
                 
-                with tabs[2]:
+                with tabs[3]:
                     display_formatting_issues(fmt_result)
                 
-                with tabs[3]:
+                with tabs[4]:
                     st.subheader("Parsed Resume Data")
                     st.json(parsed_data)
             

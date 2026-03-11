@@ -307,3 +307,110 @@ def display_loading_progress(stage: str):
         stage: Current loading stage description
     """
     st.info(f"⏳ {stage}...")
+
+
+def display_llm_ats_report(report: Dict[str, Any]):
+    """
+    Display the full structured ATS evaluation produced by the fine-tuned Phi-3 LoRA model.
+
+    Args:
+        report: Dict returned by src.inference.generate_report.generate()
+    """
+    if not report.get("valid_json"):
+        st.warning("⚠️ Model output could not be parsed as structured JSON.")
+        raw = report.get("raw_output", "")
+        if raw:
+            st.markdown("**Raw Model Output:**")
+            st.code(raw[:2000], language=None)
+        return
+
+    st.markdown("## 🤖 Fine-Tuned Model ATS Report")
+
+    # ── Score cards ──────────────────────────────────────────────────────────
+    ats_score = report.get("ats_score", 0)
+    breakdown = report.get("score_breakdown", {})
+
+    cols = st.columns(5)
+    labels = [
+        ("ATS Score",        ats_score,                               "/100"),
+        ("Keyword Coverage", breakdown.get("keyword_coverage", 0),   "/100"),
+        ("Bullet Quality",   breakdown.get("bullet_quality",   0),   "/100"),
+        ("Formatting",       breakdown.get("formatting",       0),   "/100"),
+        ("Structure",        breakdown.get("structure",        0),   "/100"),
+    ]
+    for col, (label, value, suffix) in zip(cols, labels):
+        with col:
+            _metric_card(label, value, suffix)
+
+    st.markdown("---")
+
+    # ── Matched / Missing Skills ──────────────────────────────────────────────
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### ✅ Matched Skills")
+        matched = report.get("matched_skills", [])
+        if matched:
+            for skill in matched:
+                st.markdown(f"- `{skill}`")
+        else:
+            st.info("No matched skills reported.")
+
+    with col2:
+        st.markdown("### ❌ Missing Skills")
+        missing = report.get("missing_skills", [])
+        if missing:
+            for skill in missing:
+                st.markdown(f"- `{skill}`")
+        else:
+            st.success("No critical skills missing!")
+
+    st.markdown("---")
+
+    # ── Weak bullets with AI improvements ────────────────────────────────────
+    weak_bullets = report.get("weak_bullets", [])
+    if weak_bullets:
+        st.markdown("### 📝 Weak Bullets & AI Improvements")
+        for i, item in enumerate(weak_bullets):
+            if isinstance(item, dict):
+                original = item.get("original", item.get("bullet", ""))
+                improved = item.get("improved", item.get("rewrite", original))
+                reason   = item.get("reason",   item.get("feedback", ""))
+            else:
+                original = str(item)
+                improved = original
+                reason   = ""
+
+            preview = (original[:70] + "…") if len(original) > 70 else original
+            with st.expander(f"Bullet #{i + 1}: {preview}"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("**📝 Original**")
+                    st.text_area("orig", value=original, height=90,
+                                 key=f"llm_orig_{i}", label_visibility="collapsed")
+                with c2:
+                    st.markdown("**✨ AI Improved**")
+                    st.text_area("impr", value=improved, height=90,
+                                 key=f"llm_impr_{i}", label_visibility="collapsed")
+                    if st.button("📋 Copy", key=f"llm_copy_{i}"):
+                        st.code(improved, language=None)
+                if reason:
+                    st.info(f"💡 {reason}")
+
+    # ── AI-detected formatting issues ────────────────────────────────────────
+    ai_fmt = report.get("formatting_issues", [])
+    if ai_fmt:
+        st.markdown("---")
+        st.markdown("### 📋 AI-Detected Formatting Issues")
+        for issue in ai_fmt:
+            if isinstance(issue, dict):
+                msg = issue.get("message", issue.get("issue", str(issue)))
+            else:
+                msg = str(issue)
+            st.warning(f"⚡ {msg}")
+
+    # ── Overall feedback ─────────────────────────────────────────────────────
+    feedback = report.get("overall_feedback", "")
+    if feedback:
+        st.markdown("---")
+        st.markdown("### 💬 Overall AI Feedback")
+        st.success(feedback)

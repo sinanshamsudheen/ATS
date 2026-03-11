@@ -5,8 +5,22 @@ Provides importable functions used by ``scripts/run_inference.py``.
 """
 
 import json
+import os
 import re
+import warnings
 from typing import Dict, Any
+
+# Increase HuggingFace download timeout (default 10s is too short for large model shards)
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "300")
+
+# Phi-3 uses device_map="auto" which builds some layers on meta device; when PEFT
+# copies the adapter weights into those slots the operation is a no-op (the real
+# copy happens via assign= semantics).  The warning is harmless – suppress it.
+warnings.filterwarnings(
+    "ignore",
+    message="copying from a non-meta parameter in the checkpoint to a meta parameter",
+    category=UserWarning,
+)
 
 import yaml
 import torch
@@ -47,8 +61,12 @@ def load_model(base_model_name: str, adapter_path: str, use_4bit: bool = True):
     model_kwargs: Dict[str, Any] = {
         "trust_remote_code": True,
         "torch_dtype": torch.float16,
-        "device_map": "auto",
     }
+    # device_map="auto" is only needed (and safe) when running on CUDA;
+    # on CPU it adds accelerate dispatch hooks that break PEFT's module
+    # renaming (KeyError on 'base_model.model.model.lm_head').
+    if torch.cuda.is_available():
+        model_kwargs["device_map"] = "auto"
     if bnb_config is not None:
         model_kwargs["quantization_config"] = bnb_config
 

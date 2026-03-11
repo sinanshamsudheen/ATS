@@ -56,3 +56,9 @@ ACTION_VERBS = [
     # Innovation
     "pioneered", "spearheaded", "transformed", "revolutionized", "innovated", "strategized",
 ]
+
+# ---------------------------------------------------------------------------
+# Fine-tuned Phi-3 LoRA model
+# ---------------------------------------------------------------------------
+BASE_MODEL_NAME = "microsoft/phi-3-mini-4k-instruct"
+LORA_ADAPTER_PATH = str(BASE_DIR / "colab" / "ats_phi_lora")
