@@ -123,6 +123,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Sample files (test data)
+sample/
+
 # Spyder project settings
 .spyderproject
 .spyproject

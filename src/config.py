@@ -1,6 +1,13 @@
 import os
 from pathlib import Path
 
+# Load .env file if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, rely on system env vars
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -25,6 +32,10 @@ APP_VERSION = "3.0.0"
 # ---------------------------------------------------------------------------
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 SIMILARITY_THRESHOLD = 0.3
+
+# OpenAI fallback (used if SentenceTransformer fails)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 # ---------------------------------------------------------------------------
 # ATS formatting rules (used by scoring.formatting_check)
@@ -58,7 +69,13 @@ ACTION_VERBS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Fine-tuned Phi-3 LoRA model
+# Fine-tuned Phi-3 LoRA model (local)
 # ---------------------------------------------------------------------------
 BASE_MODEL_NAME = "microsoft/phi-3-mini-4k-instruct"
 LORA_ADAPTER_PATH = str(BASE_DIR / "colab" / "ats_phi_lora")
+
+# ---------------------------------------------------------------------------
+# Groq LLM (cloud - fast inference)
+# ---------------------------------------------------------------------------
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = "llama-3.1-8b-instant"  # Llama 3.1 8B - fast inference

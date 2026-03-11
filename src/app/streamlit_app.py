@@ -21,14 +21,8 @@ from src.app.components.results_display import (
     display_loading_progress,
     display_llm_ats_report,
 )
-from src.config import APP_TITLE, APP_VERSION, BASE_MODEL_NAME, LORA_ADAPTER_PATH
-
-
-@st.cache_resource(show_spinner=False)
-def load_phi_model(use_4bit: bool = False):
-    """Load the fine-tuned Phi-3 LoRA model once and cache it across reruns."""
-    from src.inference.generate_report import load_model
-    return load_model(BASE_MODEL_NAME, LORA_ADAPTER_PATH, use_4bit=use_4bit)
+from src.config import APP_TITLE, APP_VERSION
+from src.inference.groq_inference import generate_with_groq, is_groq_available
 
 # Page Config
 st.set_page_config(page_title=APP_TITLE, layout="wide", page_icon="📄")
@@ -85,12 +79,17 @@ with st.sidebar:
                                  help="Generate LLM-powered bullet point improvements")
         only_weak_bullets = st.checkbox("Only Rewrite Weak Bullets", value=True,
                                        help="Skip bullets that are already strong")
-        use_4bit = st.checkbox("4-bit Quantization (requires CUDA + bitsandbytes)", value=False,
-                               help="Reduces VRAM usage. Leave off unless you have a CUDA GPU with bitsandbytes installed.")
     
     st.divider()
-    st.caption("🤖 Powered by Phi-3-mini & Sentence Transformers")
-    st.caption("⚡ Local Phi-3 LoRA Fine-Tuned")
+    
+    # Status indicator
+    if is_groq_available():
+        st.success("✅ Groq API: Connected")
+    else:
+        st.warning("⚠️ Groq API: Not configured")
+    
+    st.caption("🤖 Powered by Groq + Llama3-8B")
+    st.caption("📊 Sentence Transformers for embeddings")
 
 # Main Interface
 col1, col2 = st.columns(2)
@@ -153,21 +152,21 @@ if analyze_button:
             keyword_analysis = analyzer.analyze_keywords(text, jd_keywords)
             overall_match = analyzer.calculate_overall_match(text, job_description)
             
-            # Step 5: Fine-tuned model inference + heuristic rewrite analysis
+            # Step 5: Groq LLM inference + heuristic rewrite analysis
             rewrite_results = None
             llm_report = None
             if enable_llm:
-                status_text.info("🤖 Loading fine-tuned Phi-3 model... (first load may take a minute)")
-                progress_bar.progress(60)
+                if is_groq_available():
+                    status_text.info("🤖 Running Groq + Llama3-8B inference...")
+                    progress_bar.progress(60)
 
-                try:
-                    model, tokenizer = load_phi_model(use_4bit)
-                    status_text.info("✨ Running fine-tuned model inference...")
-                    progress_bar.progress(70)
-                    from src.inference.generate_report import generate as phi_generate
-                    llm_report = phi_generate(model, tokenizer, text, job_description)
-                except Exception as _llm_err:
-                    st.warning(f"⚠️ Fine-tuned model inference failed: {_llm_err}")
+                    try:
+                        llm_report = generate_with_groq(text, job_description)
+                        progress_bar.progress(70)
+                    except Exception as _llm_err:
+                        st.warning(f"⚠️ Groq inference failed: {_llm_err}")
+                else:
+                    st.warning("⚠️ Groq API not configured. Set GROQ_API_KEY in .env file.")
 
                 rewrite_engine = BulletRewriter()
                 status_text.info("📝 Analyzing bullet quality...")
@@ -264,7 +263,7 @@ if analyze_button:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: gray; padding: 20px;">
-    <p>Built with ❤️ using Streamlit, Phi-3-mini, and Sentence Transformers</p>
-    <p style="font-size: 12px;">Powered by Phi-3-mini LoRA fine-tuning & Sentence Transformers</p>
+    <p>Built with ❤️ using Streamlit, Groq, and Sentence Transformers</p>
+    <p style="font-size: 12px;">Powered by Llama3-8B via Groq & Sentence Transformers</p>
 </div>
 """, unsafe_allow_html=True)
