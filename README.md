@@ -5,14 +5,11 @@ AI-powered resume optimiser that scores resumes against job descriptions, identi
 ## Features
 
 - **PDF Parsing** — extract and clean text from any PDF resume.
-- **Keyword Matching** — semantic similarity between resume and JD using sentence-transformers.
-- **Formatting Audit** — detect ATS-unfriendly elements (images, encryption, low text density).
-- **Bullet Quality Analysis** — heuristic scoring for action verbs, metrics, and specificity.
 - **Local-First LLM Inference** — GGUF-quantised Phi-3 model runs fully offline on CPU (no GPU required).
 - **Groq Cloud Fallback** — automatic fallback to Llama 3.1 8B via Groq API when local model is unavailable.
-- **Multi-Backend Embeddings** — automatic fallback: SentenceTransformers → HuggingFace → OpenAI.
+- **ATS Report** — structured AI-generated score with keyword coverage, formatting, and improvement suggestions.
 - **LoRA Fine-Tuning** — fine-tune Phi-3-Mini on synthetic ATS data using 4-bit QLoRA (Colab or local GPU).
-- **Streamlit UI** — upload a PDF, paste a JD, and get instant analysis.
+- **Streamlit UI** — upload a PDF, paste a JD, and get instant ATS analysis.
 
 ## Project Structure
 
@@ -48,20 +45,13 @@ ATS/
 │   ├── config.py                       # Central configuration & env setup
 │   ├── parsing/
 │   │   ├── pdf_extractor.py            # PDF → text (PyMuPDF)
-│   │   ├── resume_parser.py            # Text → structured sections
-│   │   └── jd_parser.py               # JD keyword extraction
-│   ├── scoring/
-│   │   ├── embeddings.py               # Multi-backend embeddings (ST/HF/OpenAI)
-│   │   ├── similarity_engine.py        # Semantic keyword matching
-│   │   └── formatting_check.py         # ATS format compliance
-│   ├── rewriting/
-│   │   └── bullet_rewriter.py          # Heuristic bullet analysis
+│   │   └── resume_parser.py            # Text → structured sections
 │   ├── training/
 │   │   ├── dataset_loader.py           # Dataset prep functions
 │   │   └── lora_training.py            # LoRA training pipeline
 │   ├── inference/
 │   │   ├── gguf_inference.py           # Primary — llama-cpp GGUF inference
-│   │   ├── generate_report.py          # Fallback — HF Phi-3 + LoRA inference
+│   │   ├── generate_report.py          # HF Phi-3 + LoRA inference (training use)
 │   │   └── groq_inference.py           # Cloud fallback — Groq + Llama 3.1 8B
 │   └── app/
 │       ├── streamlit_app.py            # Streamlit web UI
@@ -112,7 +102,7 @@ streamlit run src/app/streamlit_app.py
 
 Upload a PDF resume, paste a job description, and click **Analyze & Optimize**.
 
-The sidebar shows which inference backend is active (GGUF / HF / Groq).
+The sidebar shows which inference backend is active (GGUF / Groq).
 
 ### 4. (Optional) Configure API keys
 
@@ -138,8 +128,7 @@ The app resolves inference in priority order at startup:
 | Priority | Backend | Model | Notes |
 |----------|---------|-------|-------|
 | 1 — Primary | **GGUF (llama-cpp)** | Phi-3-mini Q8_0 | ~3.8 GB RAM, fully offline, CPU-only |
-| 2 — Fallback | **HF Transformers + PEFT** | Phi-3-mini + LoRA | ~7.6 GB RAM (bfloat16), CPU-only |
-| 3 — Cloud | **Groq API** | Llama 3.1 8B Instant | Requires `GROQ_API_KEY` in `.env` |
+| 2 — Cloud | **Groq API** | Llama 3.1 8B Instant | Requires `GROQ_API_KEY` in `.env` |
 
 The active backend is shown in the sidebar. Analysis still works if only Groq is available.
 
@@ -197,23 +186,10 @@ python scripts/merge_and_convert.py  # → models/phi3-ats-q8_0.gguf
 - **Transformers / PEFT** — HF model loading and LoRA adapter support
 - **bitsandbytes** — 4-bit NF4 quantisation for Colab training
 - **Groq** — cloud LLM inference fallback (Llama 3.1 8B)
-- **Sentence-Transformers / HuggingFace** — semantic embeddings (`all-MiniLM-L6-v2`)
-- **OpenAI** — optional embedding fallback
 - **PyMuPDF** — PDF text extraction
 - **Streamlit** — web interface
-- **scikit-learn** — cosine similarity
 - **Datasets / Accelerate** — training data pipeline and distributed training support
 - **python-dotenv** — environment variable management
-
-## Embedding Backends
-
-The app automatically selects the best available embedding backend:
-
-| Priority | Backend | Requirements |
-|----------|---------|-------------|
-| 1 | SentenceTransformers | `sentence-transformers` installed |
-| 2 | HuggingFace Direct | `transformers` installed (automatic fallback) |
-| 3 | OpenAI API | `OPENAI_API_KEY` set in `.env` |
 
 ---
 
@@ -224,8 +200,9 @@ The app automatically selects the best available embedding backend:
 **New Features:**
 - **GGUF CPU Inference** — Added `src/inference/gguf_inference.py` using `llama-cpp-python` to run the quantised Phi-3 model entirely on CPU with no GPU required. Primary inference backend.
 - **LoRA Merge & Convert Script** — `scripts/merge_and_convert.py` merges the LoRA adapter into the base model and converts it to GGUF (Q8_0 by default) in one command. Clones `llama.cpp` into `vendor/` automatically.
-- **3-Tier Inference Chain** — `streamlit_app.py` now tries GGUF → HF Phi-3+LoRA → Groq in order, with sidebar status showing the active backend.
+- **2-Tier Inference Chain** — `streamlit_app.py` tries GGUF → Groq in order. Sidebar shows the active backend.
 - **Groq as Pure Fallback** — Groq API is now optional; the app runs fully offline if the GGUF model is present.
+- **Simplified UI** — removed keyword analysis, formatting audit, and bullet-rewrite tabs. The app now surfaces a single AI-generated ATS report.
 
 **Bug Fixes:**
 - Fixed `DynamicCache.seen_tokens` `AttributeError`: replaced `AutoModelForCausalLM` with `Phi3ForCausalLM` directly, removing `trust_remote_code=True` and the stale cached `modeling_phi3.py`.
@@ -239,10 +216,16 @@ The app automatically selects the best available embedding backend:
 |------|--------|
 | `src/inference/gguf_inference.py` | **NEW** — llama-cpp GGUF inference wrapper |
 | `scripts/merge_and_convert.py` | **NEW** — LoRA merge + GGUF conversion pipeline |
-| `src/app/streamlit_app.py` | Added `_load_local_inference()` with GGUF → HF → Groq chain |
+| `src/app/streamlit_app.py` | Rewritten — GGUF → Groq chain; ATS report only |
+| `src/app/components/results_display.py` | Stripped to `display_llm_ats_report` only |
 | `src/inference/generate_report.py` | Switched to `Phi3ForCausalLM`, removed `trust_remote_code`, added CPU bfloat16 |
 | `src/config.py` | Added `GGUF_MODEL_PATH`; removed `TRANSFORMERS_CACHE`; added warning suppression |
-| `requirements.txt` | Added `llama-cpp-python>=0.3.2` |
+| `requirements.txt` | Added `llama-cpp-python>=0.3.2`; removed `sentence-transformers`, `scikit-learn`, `openai` |
+| `src/parsing/jd_parser.py` | **DELETED** |
+| `src/scoring/similarity_engine.py` | **DELETED** |
+| `src/scoring/embeddings.py` | **DELETED** |
+| `src/scoring/formatting_check.py` | **DELETED** |
+| `src/rewriting/bullet_rewriter.py` | **DELETED** |
 
 **Migration Notes:**
 1. Install `llama-cpp-python` via the prebuilt wheel (see Quick Start — Step 1).

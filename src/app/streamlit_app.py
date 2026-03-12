@@ -9,18 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 from src.parsing.pdf_extractor import extract_text_from_pdf
 from src.parsing.resume_parser import ResumeParser
-from src.parsing.jd_parser import extract_keywords
-from src.scoring.similarity_engine import SimilarityAnalyzer
-from src.scoring.formatting_check import FormattingChecker
-from src.rewriting.bullet_rewriter import BulletRewriter
-from src.app.components.results_display import (
-    display_metrics_overview,
-    display_rewrite_summary,
-    display_missing_keywords,
-    display_formatting_issues,
-    display_loading_progress,
-    display_llm_ats_report,
-)
+from src.app.components.results_display import display_llm_ats_report
 from src.config import APP_TITLE, APP_VERSION, GGUF_MODEL_PATH, BASE_MODEL_NAME, LORA_ADAPTER_PATH
 from src.inference.groq_inference import generate_with_groq, is_groq_available
 
@@ -30,9 +19,8 @@ def _load_local_inference():
     """Load the best available local model.
 
     Returns (generate_fn, model_label) or (None, None).
-    Priority: GGUF (fast CPU) → HuggingFace Phi-3 + LoRA.
+    Priority: GGUF (fast CPU) → Groq.
     """
-    # 1. Prefer GGUF — fast & low-memory
     if Path(GGUF_MODEL_PATH).exists():
         try:
             from src.inference.gguf_inference import load_model, generate
@@ -43,7 +31,6 @@ def _load_local_inference():
         except Exception:
             pass
 
-    # 2. Fall back to Groq cloud inference
     if is_groq_available():
         def _groq_gen(resume, jd):
             return generate_with_groq(resume, jd)
@@ -51,10 +38,11 @@ def _load_local_inference():
 
     return None, None
 
+
 # Page Config
 st.set_page_config(page_title=APP_TITLE, layout="wide", page_icon="📄")
 
-# Custom CSS for better UI
+# Custom CSS
 st.markdown("""
 <style>
     .main-header {
@@ -84,7 +72,7 @@ st.markdown("""
 st.markdown(f"""
 <div class="main-header">
     <h1>📄 {APP_TITLE}</h1>
-    <p style="margin: 0; font-size: 16px;">v{APP_VERSION} - AI-Powered Resume Optimizer</p>
+    <p style="margin: 0; font-size: 16px;">v{APP_VERSION} - AI-Powered ATS Report</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -93,23 +81,13 @@ with st.sidebar:
     st.header("🚀 How It Works")
     st.info("""
     1. 📤 Upload your Resume (PDF)
-    2. 📋 Paste the Job Description  
-    3. 🔍 Click "Analyze & Optimize"
-    4. ✨ Get AI-powered rewrite suggestions
+    2. 📋 Paste the Job Description
+    3. 🔍 Click "Analyze"
+    4. ✨ Get your ATS report
     """)
-    
-    st.divider()
-    
-    # Advanced Options
-    with st.expander("⚙️ Advanced Settings"):
-        enable_llm = st.checkbox("Enable AI Rewrites", value=True, 
-                                 help="Generate LLM-powered bullet point improvements")
-        only_weak_bullets = st.checkbox("Only Rewrite Weak Bullets", value=True,
-                                       help="Skip bullets that are already strong")
-    
+
     st.divider()
 
-    # Status indicators
     _local_gen, _local_label = _load_local_inference()
     if _local_gen is not None:
         st.success(f"✅ Local model: {_local_label}")
@@ -124,30 +102,31 @@ with st.sidebar:
     if _local_gen is not None:
         st.caption(f"🤖 Inference: {_local_label} (Groq fallback)")
     elif is_groq_available():
-        st.caption("🤖 Inference: Groq + Llama3-8B")
+        st.caption("🤖 Inference: Groq + Llama 3.1 8B")
     else:
         st.caption("🤖 Inference: Disabled (no model available)")
-    st.caption("📊 Sentence Transformers for embeddings")
 
 # Main Interface
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("1️⃣ Upload Resume")
-    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", 
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf",
+                                     key="resume_upload",
                                      help="Max 5MB, ATS-friendly format recommended")
-    
+
 with col2:
     st.subheader("2️⃣ Job Description")
-    job_description = st.text_area("Paste JD text here", height=200, 
+    job_description = st.text_area("Paste JD text here", height=200,
+                                   key="job_description",
                                    placeholder="Paste the complete job description including requirements, responsibilities, and qualifications...")
 
 # Analyze Button
 st.markdown("---")
-col_analyze = st.columns([1, 2, 1])[1]  # Center the button
+col_analyze = st.columns([1, 2, 1])[1]
 
 with col_analyze:
-    analyze_button = st.button("🚀 Analyze & Optimize Resume", type="primary")
+    analyze_button = st.button("🚀 Analyze Resume", type="primary")
 
 if analyze_button:
     if not uploaded_file:
@@ -155,154 +134,69 @@ if analyze_button:
     elif not job_description:
         st.error("❌ Please provide a Job Description.")
     else:
-        # Progress tracking
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         try:
-            # Save uploaded file temporarily
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_path = tmp_file.name
 
             # Step 1: Extract text
             status_text.info("📄 Extracting text from PDF...")
-            progress_bar.progress(10)
+            progress_bar.progress(20)
             text = extract_text_from_pdf(tmp_path)
-            
+
             # Step 2: Parse resume
             status_text.info("🔍 Parsing resume structure...")
-            progress_bar.progress(20)
+            progress_bar.progress(40)
             parser = ResumeParser()
             parsed_data = parser.parse(text)
-            
-            # Step 3: Formatting check
-            status_text.info("📋 Checking ATS formatting...")
-            progress_bar.progress(30)
-            fmt_checker = FormattingChecker()
-            fmt_result = fmt_checker.check(tmp_path)
-            
-            # Step 4: Similarity analysis
-            status_text.info("🎯 Analyzing keyword match...")
-            progress_bar.progress(45)
-            analyzer = SimilarityAnalyzer()
-            jd_keywords = extract_keywords(job_description)
-            keyword_analysis = analyzer.analyze_keywords(text, jd_keywords)
-            overall_match = analyzer.calculate_overall_match(text, job_description)
-            
-            # Step 5: LLM inference — try local model first, fall back to Groq
-            rewrite_results = None
+
+            # Step 3: LLM inference — try local model first, fall back to Groq
             llm_report = None
-            if enable_llm:
-                progress_bar.progress(60)
-                _local_gen, _local_label = _load_local_inference()
+            progress_bar.progress(60)
+            _local_gen, _local_label = _load_local_inference()
 
-                if _local_gen is not None:
-                    status_text.info(f"🤖 Running {_local_label} inference...")
+            if _local_gen is not None:
+                status_text.info(f"🤖 Running {_local_label} inference...")
+                try:
+                    llm_report = _local_gen(text, job_description)
+                    progress_bar.progress(90)
+                except Exception as _local_err:
+                    st.warning(f"⚠️ Local model failed: {_local_err} — falling back to Groq")
+
+            if llm_report is None:
+                if is_groq_available():
+                    status_text.info("🤖 Running Groq + Llama 3.1 8B inference...")
                     try:
-                        llm_report = _local_gen(text, job_description)
-                        progress_bar.progress(70)
-                    except Exception as _local_err:
-                        st.warning(f"⚠️ Local model failed: {_local_err} — falling back to Groq")
+                        llm_report = generate_with_groq(text, job_description)
+                        progress_bar.progress(90)
+                    except Exception as _llm_err:
+                        st.warning(f"⚠️ Groq inference failed: {_llm_err}")
+                else:
+                    st.warning("⚠️ No inference backend available. Set GROQ_API_KEY or run merge_and_convert.py.")
 
-                if llm_report is None:
-                    if is_groq_available():
-                        status_text.info("🤖 Running Groq + Llama3-8B inference...")
-                        try:
-                            llm_report = generate_with_groq(text, job_description)
-                            progress_bar.progress(70)
-                        except Exception as _llm_err:
-                            st.warning(f"⚠️ Groq inference failed: {_llm_err}")
-                    else:
-                        st.warning("⚠️ No inference backend available. Set GROQ_API_KEY or run merge_and_convert.py.")
-
-                rewrite_engine = BulletRewriter()
-                status_text.info("📝 Analyzing bullet quality...")
-                progress_bar.progress(80)
-                rewrite_results = rewrite_engine.analyze_resume_sections(
-                    parsed_data,
-                    job_description
-                )
-            
-            # Cleanup
             os.unlink(tmp_path)
-            
-            # Complete
             progress_bar.progress(100)
             status_text.success("✅ Analysis complete!")
-            
-            # --- Results Display ---
+
             st.markdown("---")
-            
-            # Calculate bullet quality score if LLM was used
-            bullet_quality_score = 0
-            if llm_report and llm_report.get("valid_json"):
-                bullet_quality_score = llm_report.get("score_breakdown", {}).get("bullet_quality", 0)
-            elif rewrite_results:
-                bullet_quality_score = rewrite_results.get("overall_stats", {}).get("average_score", 0)
-            else:
-                # Fallback: use simple heuristic based on other scores
-                bullet_quality_score = (overall_match + keyword_analysis['score']) / 2
-            
-            # Display overview metrics
-            display_metrics_overview(
-                overall_match=overall_match,
-                keyword_score=keyword_analysis['score'],
-                formatting_score=fmt_result['score'],
-                bullet_quality_score=bullet_quality_score
-            )
-            
-            st.markdown("---")
-            
-            # Tabbed interface for detailed results
-            if enable_llm and (rewrite_results or llm_report):
-                tabs = st.tabs(["🤖 AI Report", "🎯 Bullet Rewrites", "🔑 Keywords", "📋 Formatting", "📊 Raw Data"])
-                
+
+            if llm_report:
+                tabs = st.tabs(["🤖 AI Report", "📊 Raw Data"])
                 with tabs[0]:
-                    if llm_report:
-                        display_llm_ats_report(llm_report)
-                    else:
-                        st.info("Fine-tuned model report unavailable. Check the Bullet Rewrites tab for heuristic analysis.")
-                
+                    display_llm_ats_report(llm_report)
                 with tabs[1]:
-                    if rewrite_results:
-                        display_rewrite_summary(rewrite_results)
-                    else:
-                        st.info("No bullet rewrite results available.")
-                
-                with tabs[2]:
-                    display_missing_keywords(
-                        keyword_analysis["missing"],
-                        keyword_analysis["matched"]
-                    )
-                
-                with tabs[3]:
-                    display_formatting_issues(fmt_result)
-                
-                with tabs[4]:
                     st.subheader("Parsed Resume Data")
                     st.json(parsed_data)
-            
             else:
-                # Simplified view without LLM
-                tabs = st.tabs(["🔑 Keywords", "📋 Formatting", "📊 Resume Content"])
-                
-                with tabs[0]:
-                    display_missing_keywords(
-                        keyword_analysis["missing"],
-                        keyword_analysis["matched"]
-                    )
-                
-                with tabs[1]:
-                    display_formatting_issues(fmt_result)
-                
-                with tabs[2]:
-                    st.subheader("Parsed Resume Data")
-                    st.json(parsed_data)
+                st.error("❌ No report generated. Check that a model is available.")
+                st.subheader("Parsed Resume Data")
+                st.json(parsed_data)
 
         except Exception as e:
             st.error(f"❌ An error occurred: {str(e)}")
-            
             with st.expander("🐛 Debug Information"):
                 import traceback
                 st.code(traceback.format_exc())
@@ -311,7 +205,6 @@ if analyze_button:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: gray; padding: 20px;">
-    <p>Built with ❤️ using Streamlit, Phi-3, Groq, and Sentence Transformers</p>
-    <p style="font-size: 12px;">Powered by Local Phi-3 LoRA (Groq fallback) & Sentence Transformers</p>
+    <p>Built with ❤️ using Streamlit, Phi-3, and Groq</p>
 </div>
 """, unsafe_allow_html=True)
