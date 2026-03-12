@@ -165,5 +165,8 @@ data/raw/*.pdf
 data/processed/*.jsonl
 *.pdf
 
-#Model
-models/phi3-ats-q8_0.gguf
+# Model files (too large for GitHub)
+*.gguf
+*.safetensors
+*.pt
+*.pth
