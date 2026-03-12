@@ -23,7 +23,6 @@ ATS/
 │   ├── ats_phi_lora/                   # Trained LoRA adapter weights
 │   │   ├── adapter_config.json
 │   │   ├── adapter_model.safetensors
-│   │   └── checkpoint-36/
 │   ├── configs/
 │   │   ├── lora_config.yaml            # LoRA hyperparameters
 │   │   └── training_config.yaml        # Training & model settings
@@ -68,8 +67,6 @@ ATS/
 │       ├── streamlit_app.py            # Streamlit web UI
 │       └── components/
 │           └── results_display.py
-├── vendor/
-│   └── llama.cpp/                      # llama.cpp source (used by merge_and_convert.py)
 ├── .env                                # API keys — gitignored, never commit
 ├── .env.example                        # Template — copy to .env and fill in keys
 ├── requirements.txt
