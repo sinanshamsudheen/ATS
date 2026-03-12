@@ -70,6 +70,8 @@ ATS/
 │           └── results_display.py
 ├── vendor/
 │   └── llama.cpp/                      # llama.cpp source (used by merge_and_convert.py)
+├── .env                                # API keys — gitignored, never commit
+├── .env.example                        # Template — copy to .env and fill in keys
 ├── requirements.txt
 └── .gitignore
 ```
@@ -117,15 +119,20 @@ The sidebar shows which inference backend is active (GGUF / HF / Groq).
 
 ### 4. (Optional) Configure API keys
 
-If the local GGUF model is unavailable, the app automatically falls back to Groq. Create a `.env` file:
+If the local GGUF model is unavailable, the app automatically falls back to Groq.
+
+```bash
+copy .env.example .env   # Windows
+# cp .env.example .env   # macOS / Linux
+```
+
+Then open `.env` and fill in your key:
 
 ```env
 GROQ_API_KEY=gsk_your_groq_api_key_here
-# Optional: OpenAI fallback for embeddings
-OPENAI_API_KEY=sk_your_openai_key_here
 ```
 
-Get your Groq API key from [console.groq.com/keys](https://console.groq.com/keys).
+Get your Groq API key from [console.groq.com/keys](https://console.groq.com/keys). The `.env` file is gitignored — never commit it.
 
 ## LLM Inference Chain
 
