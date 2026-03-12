@@ -1,4 +1,5 @@
 import os
+import warnings
 from pathlib import Path
 
 # Load .env file if present
@@ -18,8 +19,17 @@ FINETUNED_DIR = MODELS_DIR / "fine-tuned"
 HF_CACHE_DIR = MODELS_DIR / "huggingface_cache"
 
 os.environ['HF_HOME'] = str(HF_CACHE_DIR)
-os.environ['TRANSFORMERS_CACHE'] = str(HF_CACHE_DIR)
+# TRANSFORMERS_CACHE is deprecated since transformers v5 — HF_HOME is the replacement
+os.environ.pop('TRANSFORMERS_CACHE', None)
 HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Suppress TensorFlow / oneDNN noise (this project doesn't use TF directly)
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')       # hide C++ INFO/WARNING logs
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')      # disable oneDNN custom ops
+os.environ.setdefault('TF_KERAS_LEGACY_DEPRECATION', '0') # suppress tf_keras warnings
+warnings.filterwarnings('ignore', category=FutureWarning, module='tensorflow')
+warnings.filterwarnings('ignore', category=FutureWarning, module='google')
+warnings.filterwarnings('ignore', message='Using `TRANSFORMERS_CACHE`')
 
 # ---------------------------------------------------------------------------
 # App settings
@@ -73,6 +83,7 @@ ACTION_VERBS = [
 # ---------------------------------------------------------------------------
 BASE_MODEL_NAME = "microsoft/phi-3-mini-4k-instruct"
 LORA_ADAPTER_PATH = str(BASE_DIR / "colab" / "ats_phi_lora")
+GGUF_MODEL_PATH = str(MODELS_DIR / "phi3-ats-q8_0.gguf")
 
 # ---------------------------------------------------------------------------
 # Groq LLM (cloud - fast inference)

@@ -24,8 +24,12 @@ warnings.filterwarnings(
 
 import yaml
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import Phi3ForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
+
+# Use all available CPU cores for inference
+if not torch.cuda.is_available():
+    torch.set_num_threads(torch.get_num_threads() * 2)
 
 
 # ------------------------------------------------------------------
@@ -43,10 +47,12 @@ def load_config(path: str = "configs/training_config.yaml") -> dict:
 
 def load_model(base_model_name: str, adapter_path: str, use_4bit: bool = True):
     """Load base model, attach LoRA adapter, and return (model, tokenizer)."""
-    print(f"Loading base model: {base_model_name}")
+    has_cuda = torch.cuda.is_available()
+    print(f"Loading base model: {base_model_name}  (CUDA: {has_cuda})")
 
+    # 4-bit quantization requires CUDA + bitsandbytes — skip on CPU
     bnb_config = None
-    if use_4bit:
+    if use_4bit and has_cuda:
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -54,23 +60,24 @@ def load_model(base_model_name: str, adapter_path: str, use_4bit: bool = True):
             bnb_4bit_use_double_quant=True,
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     model_kwargs: Dict[str, Any] = {
-        "trust_remote_code": True,
-        "torch_dtype": torch.float16,
+        "torch_dtype": torch.float16 if has_cuda else torch.bfloat16,
     }
     # device_map="auto" is only needed (and safe) when running on CUDA;
     # on CPU it adds accelerate dispatch hooks that break PEFT's module
     # renaming (KeyError on 'base_model.model.model.lm_head').
-    if torch.cuda.is_available():
+    if has_cuda:
         model_kwargs["device_map"] = "auto"
     if bnb_config is not None:
         model_kwargs["quantization_config"] = bnb_config
 
-    model = AutoModelForCausalLM.from_pretrained(base_model_name, **model_kwargs)
+    # Use Phi3ForCausalLM directly to bypass hub's auto_map which points to
+    # stale cached remote code that references the removed DynamicCache.seen_tokens.
+    model = Phi3ForCausalLM.from_pretrained(base_model_name, **model_kwargs)
 
     print(f"Loading LoRA adapter from: {adapter_path}")
     model = PeftModel.from_pretrained(model, adapter_path)

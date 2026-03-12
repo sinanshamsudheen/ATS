@@ -21,8 +21,35 @@ from src.app.components.results_display import (
     display_loading_progress,
     display_llm_ats_report,
 )
-from src.config import APP_TITLE, APP_VERSION
+from src.config import APP_TITLE, APP_VERSION, GGUF_MODEL_PATH, BASE_MODEL_NAME, LORA_ADAPTER_PATH
 from src.inference.groq_inference import generate_with_groq, is_groq_available
+
+
+@st.cache_resource(show_spinner=False)
+def _load_local_inference():
+    """Load the best available local model.
+
+    Returns (generate_fn, model_label) or (None, None).
+    Priority: GGUF (fast CPU) → HuggingFace Phi-3 + LoRA.
+    """
+    # 1. Prefer GGUF — fast & low-memory
+    if Path(GGUF_MODEL_PATH).exists():
+        try:
+            from src.inference.gguf_inference import load_model, generate
+            model = load_model(GGUF_MODEL_PATH)
+            def _gen(resume, jd, _m=model):
+                return generate(_m, resume, jd)
+            return _gen, "Phi-3 GGUF Q8_0"
+        except Exception:
+            pass
+
+    # 2. Fall back to Groq cloud inference
+    if is_groq_available():
+        def _groq_gen(resume, jd):
+            return generate_with_groq(resume, jd)
+        return _groq_gen, "Groq (Llama 3.1 8B)"
+
+    return None, None
 
 # Page Config
 st.set_page_config(page_title=APP_TITLE, layout="wide", page_icon="📄")
@@ -81,14 +108,25 @@ with st.sidebar:
                                        help="Skip bullets that are already strong")
     
     st.divider()
-    
-    # Status indicator
+
+    # Status indicators
+    _local_gen, _local_label = _load_local_inference()
+    if _local_gen is not None:
+        st.success(f"✅ Local model: {_local_label}")
+    else:
+        st.warning("⚠️ Local model: Unavailable")
+
     if is_groq_available():
         st.success("✅ Groq API: Connected")
     else:
         st.warning("⚠️ Groq API: Not configured")
-    
-    st.caption("🤖 Powered by Groq + Llama3-8B")
+
+    if _local_gen is not None:
+        st.caption(f"🤖 Inference: {_local_label} (Groq fallback)")
+    elif is_groq_available():
+        st.caption("🤖 Inference: Groq + Llama3-8B")
+    else:
+        st.caption("🤖 Inference: Disabled (no model available)")
     st.caption("📊 Sentence Transformers for embeddings")
 
 # Main Interface
@@ -152,21 +190,31 @@ if analyze_button:
             keyword_analysis = analyzer.analyze_keywords(text, jd_keywords)
             overall_match = analyzer.calculate_overall_match(text, job_description)
             
-            # Step 5: Groq LLM inference + heuristic rewrite analysis
+            # Step 5: LLM inference — try local model first, fall back to Groq
             rewrite_results = None
             llm_report = None
             if enable_llm:
-                if is_groq_available():
-                    status_text.info("🤖 Running Groq + Llama3-8B inference...")
-                    progress_bar.progress(60)
+                progress_bar.progress(60)
+                _local_gen, _local_label = _load_local_inference()
 
+                if _local_gen is not None:
+                    status_text.info(f"🤖 Running {_local_label} inference...")
                     try:
-                        llm_report = generate_with_groq(text, job_description)
+                        llm_report = _local_gen(text, job_description)
                         progress_bar.progress(70)
-                    except Exception as _llm_err:
-                        st.warning(f"⚠️ Groq inference failed: {_llm_err}")
-                else:
-                    st.warning("⚠️ Groq API not configured. Set GROQ_API_KEY in .env file.")
+                    except Exception as _local_err:
+                        st.warning(f"⚠️ Local model failed: {_local_err} — falling back to Groq")
+
+                if llm_report is None:
+                    if is_groq_available():
+                        status_text.info("🤖 Running Groq + Llama3-8B inference...")
+                        try:
+                            llm_report = generate_with_groq(text, job_description)
+                            progress_bar.progress(70)
+                        except Exception as _llm_err:
+                            st.warning(f"⚠️ Groq inference failed: {_llm_err}")
+                    else:
+                        st.warning("⚠️ No inference backend available. Set GROQ_API_KEY or run merge_and_convert.py.")
 
                 rewrite_engine = BulletRewriter()
                 status_text.info("📝 Analyzing bullet quality...")
@@ -263,7 +311,7 @@ if analyze_button:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: gray; padding: 20px;">
-    <p>Built with ❤️ using Streamlit, Groq, and Sentence Transformers</p>
-    <p style="font-size: 12px;">Powered by Llama3-8B via Groq & Sentence Transformers</p>
+    <p>Built with ❤️ using Streamlit, Phi-3, Groq, and Sentence Transformers</p>
+    <p style="font-size: 12px;">Powered by Local Phi-3 LoRA (Groq fallback) & Sentence Transformers</p>
 </div>
 """, unsafe_allow_html=True)

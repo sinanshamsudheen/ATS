@@ -39,3 +39,6 @@ seaborn>=0.12.0
 
 # Testing
 pytest>=7.0.0
+
+# GGUF CPU inference
+llama-cpp-python>=0.3.2
