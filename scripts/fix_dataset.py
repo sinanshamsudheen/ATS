@@ -25,9 +25,9 @@ sys.path.insert(0, str(ROOT))
 from src.scoring import compute_overlap  # noqa: E402
 from src.training.dataset_loader import prepare_dataset  # noqa: E402
 
-RAW_PATH = ROOT / "data" / "raw_dataset.json"
-TRAIN_PATH = ROOT / "data" / "train.json"
-VAL_PATH = ROOT / "data" / "validation.json"
+RAW_PATH = ROOT / "colab" / "data" / "raw_dataset.json"
+TRAIN_PATH = ROOT / "colab" / "data" / "train.json"
+VAL_PATH = ROOT / "colab" / "data" / "validation.json"
 
 # Weights for recomputing ats_score from breakdown components
 SCORE_WEIGHTS = {

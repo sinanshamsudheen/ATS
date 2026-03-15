@@ -607,7 +607,7 @@ notebook = {
     "cells": cells,
 }
 
-out_path = Path(__file__).parent.parent / "ats_fine_tuning_pipeline.ipynb"
+out_path = Path(__file__).parent.parent / "colab" / "ats_fine_tuning_pipeline.ipynb"
 with open(out_path, "w") as f:
     json.dump(notebook, f, indent=1)
 
