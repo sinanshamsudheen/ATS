@@ -12,8 +12,33 @@ import time
 from typing import Dict, Any, Optional
 
 from ..config import GROQ_API_KEY, GROQ_MODEL
+from ._prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 
 logger = logging.getLogger(__name__)
+
+_SYSTEM_PROMPT = SYSTEM_PROMPT
+
+_USER_PROMPT = USER_PROMPT_TEMPLATE + """
+{{
+    "ats_score": <number 0-100>,
+    "score_breakdown": {{
+        "keyword_coverage": <number 0-100>,
+        "bullet_quality": <number 0-100>,
+        "formatting": <number 0-100>,
+        "structure": <number 0-100>
+    }},
+    "matched_skills": ["skill1", "skill2", ...],
+    "missing_skills": ["skill1", "skill2", ...],
+    "weak_bullets": [
+        {{
+            "original": "exact verbatim bullet from the resume above",
+            "issue": "specific problem (vague verb / no metric / passive voice)",
+            "improved": "rewritten bullet with action verb + metric + impact"
+        }}
+    ],
+    "formatting_issues": ["issue1", "issue2", ...],
+    "overall_feedback": "2-3 sentence actionable summary"
+}}"""
 
 # Retry settings
 MAX_RETRIES = 3
@@ -54,42 +79,11 @@ class GroqInference:
         temperature: float = 0.1,
     ) -> Dict[str, Any]:
         """Generate ATS evaluation report using Groq."""
-        
-        system_prompt = """You are an expert ATS (Applicant Tracking System) analyzer. 
-Evaluate resumes against job descriptions and provide detailed compliance analysis.
-Always respond with valid JSON only, no additional text."""
-
-        user_prompt = f"""Analyze this resume against the job description and return a JSON evaluation.
-
-RESUME:
-{resume_text}
-
-JOB DESCRIPTION:
-{job_description}
-
-Return ONLY a JSON object with this exact structure:
-{{
-    "ats_score": <number 0-100>,
-    "score_breakdown": {{
-        "keyword_coverage": <number 0-100>,
-        "bullet_quality": <number 0-100>,
-        "formatting": <number 0-100>,
-        "structure": <number 0-100>
-    }},
-    "matched_skills": ["skill1", "skill2", ...],
-    "missing_skills": ["skill1", "skill2", ...],
-    "weak_bullets": [
-        {{
-            "original": "original bullet text",
-            "issue": "what's wrong",
-            "improved": "suggested improvement"
-        }}
-    ],
-    "formatting_issues": ["issue1", "issue2", ...],
-    "overall_feedback": "summary feedback string"
-}}"""
-
-        return self._call_with_retry(system_prompt, user_prompt, max_tokens, temperature)
+        user_prompt = _USER_PROMPT.format(
+            resume_text=resume_text,
+            job_description=job_description,
+        )
+        return self._call_with_retry(_SYSTEM_PROMPT, user_prompt, max_tokens, temperature)
     
     def _call_with_retry(
         self,

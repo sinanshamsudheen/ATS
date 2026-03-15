@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional
 
 from llama_cpp import Llama
 
+from ._prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+
 
 # ------------------------------------------------------------------
 # Model loading
@@ -38,26 +40,13 @@ def load_model(
 
 
 # ------------------------------------------------------------------
-# Prompt / parsing (mirrors groq_inference format)
+# Prompt / parsing (shared with groq_inference via _prompts.py)
 # ------------------------------------------------------------------
 
-_SYSTEM_PROMPT = (
-    "You are an expert ATS (Applicant Tracking System) analyzer. "
-    "Evaluate resumes against job descriptions and provide detailed "
-    "compliance analysis.  Always respond with valid JSON only, no "
-    "additional text."
-)
+_SYSTEM_PROMPT = SYSTEM_PROMPT
 
-_USER_PROMPT = """\
-Analyze this resume against the job description and return a JSON evaluation.
-
-RESUME:
-{resume_text}
-
-JOB DESCRIPTION:
-{job_description}
-
-Return ONLY a JSON object with this exact structure:
+# Expand the user template with the JSON schema skeleton
+_USER_PROMPT = USER_PROMPT_TEMPLATE + """
 {{
     "ats_score": <number 0-100>,
     "score_breakdown": {{
@@ -70,13 +59,13 @@ Return ONLY a JSON object with this exact structure:
     "missing_skills": ["skill1", "skill2"],
     "weak_bullets": [
         {{
-            "original": "bullet text",
-            "issue": "what's wrong",
-            "improved": "better version"
+            "original": "exact verbatim bullet from the resume above",
+            "issue": "specific problem (vague verb / no metric / passive voice)",
+            "improved": "rewritten bullet with action verb + metric + impact"
         }}
     ],
     "formatting_issues": ["issue1", "issue2"],
-    "overall_feedback": "summary feedback"
+    "overall_feedback": "2-3 sentence actionable summary"
 }}"""
 
 
