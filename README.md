@@ -7,7 +7,10 @@ AI-powered resume optimiser that scores resumes against job descriptions, identi
 - **PDF Parsing** — extract and clean text from any PDF resume.
 - **Local-First LLM Inference** — GGUF-quantised Phi-3 model runs fully offline on CPU (no GPU required).
 - **Groq Cloud Fallback** — automatic fallback to Llama 3.1 8B via Groq API when local model is unavailable.
+- **Shared Prompt Templates** — centralised system/user prompts with scoring rubric, anti-hallucination guardrails, and few-shot examples used by both inference backends.
+- **Deterministic Keyword Scoring** — ~300-term skill vocabulary for ground-truth validation of matched/missing skills and overlap scoring.
 - **ATS Report** — structured AI-generated score with keyword coverage, formatting, and improvement suggestions.
+- **Dataset Repair** — `fix_dataset.py` deterministically corrects corrupted training data (skills, scores, bullets) without any LLM calls.
 - **LoRA Fine-Tuning** — fine-tune Phi-3-Mini on synthetic ATS data using 4-bit QLoRA (Colab or local GPU).
 - **Streamlit UI** — upload a PDF, paste a JD, and get instant ATS analysis.
 
@@ -17,9 +20,7 @@ AI-powered resume optimiser that scores resumes against job descriptions, identi
 ATS/
 ├── colab/
 │   ├── ats_fine_tuning_pipeline.ipynb  # Single end-to-end Colab notebook
-│   ├── ats_phi_lora/                   # Trained LoRA adapter weights
-│   │   ├── adapter_config.json
-│   │   ├── adapter_model.safetensors
+│   ├── ats_phi_lora/                   # Trained LoRA adapter weights (generated)
 │   ├── configs/
 │   │   ├── lora_config.yaml            # LoRA hyperparameters
 │   │   └── training_config.yaml        # Training & model settings
@@ -27,36 +28,35 @@ ATS/
 │       ├── raw_dataset.json            # 200 synthetic samples
 │       ├── train.json                  # 180 training samples
 │       └── validation.json             # 20 validation samples
-├── configs/
-│   ├── lora_config.yaml                # LoRA hyperparameters (local)
-│   └── training_config.yaml            # Training & model settings (local)
-├── data/
-│   ├── raw_dataset.json                # 200 synthetic samples
-│   ├── train.json                      # 180 training samples
-│   └── validation.json                 # 20 validation samples
-├── models/
+├── models/                             # Generated at runtime, gitignored
 │   ├── fine-tuned/                     # Merged HF model (intermediate, before GGUF)
-│   ├── phi3-ats-q8_0.gguf              # Final quantised model (Q8_0, ~3.8 GB)
-│   └── huggingface_cache/              # Cached sentence-transformers model
+│   ├── phi3-ats-q8_0.gguf             # Final quantised model (Q8_0, ~3.8 GB)
+│   └── huggingface_cache/             # Cached sentence-transformers model
 ├── scripts/
 │   ├── train_model.py                  # Train Phi-3 + LoRA (requires GPU)
-│   └── merge_and_convert.py            # Merge LoRA → base → GGUF (one-shot)
+│   ├── merge_and_convert.py            # Merge LoRA → base → GGUF (one-shot)
+│   ├── fix_dataset.py                  # Deterministically repair training data
+│   └── generate_notebook.py            # Generate a clean Colab notebook
 ├── src/
 │   ├── config.py                       # Central configuration & env setup
 │   ├── parsing/
 │   │   ├── pdf_extractor.py            # PDF → text (PyMuPDF)
 │   │   └── resume_parser.py            # Text → structured sections
+│   ├── scoring/
+│   │   └── keyword_scorer.py           # Deterministic skill extraction & overlap scoring
 │   ├── training/
 │   │   ├── dataset_loader.py           # Dataset prep functions
 │   │   └── lora_training.py            # LoRA training pipeline
 │   ├── inference/
+│   │   ├── _prompts.py                 # Shared ATS prompt templates (system + user)
 │   │   ├── gguf_inference.py           # Primary — llama-cpp GGUF inference
 │   │   ├── generate_report.py          # HF Phi-3 + LoRA inference (training use)
 │   │   └── groq_inference.py           # Cloud fallback — Groq + Llama 3.1 8B
 │   └── app/
 │       ├── streamlit_app.py            # Streamlit web UI
 │       └── components/
-│           └── results_display.py
+│           └── results_display.py      # ATS report visualisation components
+├── ats_fine_tuning_pipeline.ipynb      # Root-level copy of the Colab notebook
 ├── .env                                # API keys — gitignored, never commit
 ├── .env.example                        # Template — copy to .env and fill in keys
 ├── requirements.txt
@@ -190,10 +190,32 @@ python scripts/merge_and_convert.py  # → models/phi3-ats-q8_0.gguf
 - **Streamlit** — web interface
 - **Datasets / Accelerate** — training data pipeline and distributed training support
 - **python-dotenv** — environment variable management
+- **json-repair** — robust JSON parsing for LLM outputs
 
 ---
 
 ## Changelog
+
+### v3.1.0 — Shared Prompts, Deterministic Keyword Scoring & Dataset Repair
+
+**New Features:**
+- **Shared Prompt Templates** — Added `src/inference/_prompts.py` with centralised `SYSTEM_PROMPT` and `USER_PROMPT_TEMPLATE` used by both GGUF and Groq backends. Includes structured scoring rubric (keyword_coverage 50%, bullet_quality 25%, formatting 15%, structure 10%), anti-hallucination guardrails, and two few-shot examples.
+- **Deterministic Keyword Scorer** — Added `src/scoring/keyword_scorer.py` with a ~300-term skill vocabulary for ground-truth extraction of matched/missing skills and overlap percentage. Used by `fix_dataset.py` and for post-validation of LLM reports.
+- **Dataset Repair Script** — Added `scripts/fix_dataset.py` to deterministically fix corrupted training data: recalculates matched/missing skills via keyword intersection, recomputes keyword_coverage and ats_score, and removes cross-contaminated weak_bullets.
+- **Notebook Generator** — Added `scripts/generate_notebook.py` to programmatically generate a clean 6-phase Colab notebook with Phi-3 native chat template and `DataCollatorForCompletionOnlyLM`.
+
+**Files Changed:**
+| File | Change |
+|------|--------|
+| `src/inference/_prompts.py` | **NEW** — shared system/user prompt templates with few-shot examples |
+| `src/scoring/keyword_scorer.py` | **NEW** — deterministic skill extraction & overlap scoring (~300 terms) |
+| `src/scoring/__init__.py` | **NEW** — exports `extract_skills`, `compute_overlap`, `TECH_SKILLS` |
+| `scripts/fix_dataset.py` | **NEW** — deterministic dataset repair (no LLM calls) |
+| `scripts/generate_notebook.py` | **NEW** — programmatic Colab notebook generation |
+| `src/inference/groq_inference.py` | Updated — imports shared prompts from `_prompts.py` |
+| `src/inference/gguf_inference.py` | Updated — imports shared prompts from `_prompts.py` |
+
+---
 
 ### v3.0.0 — Local-First CPU Inference via GGUF
 
