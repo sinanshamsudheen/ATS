@@ -82,7 +82,7 @@ ACTION_VERBS = [
 # Fine-tuned Phi-3 LoRA model (local)
 # ---------------------------------------------------------------------------
 BASE_MODEL_NAME = "microsoft/phi-3-mini-4k-instruct"
-LORA_ADAPTER_PATH = str(BASE_DIR / "colab" / "ats_phi_lora")
+LORA_ADAPTER_PATH = str(BASE_DIR / "ats_phi_lora")
 GGUF_MODEL_PATH = str(MODELS_DIR / "phi3-ats-q8_0.gguf")
 
 # ---------------------------------------------------------------------------

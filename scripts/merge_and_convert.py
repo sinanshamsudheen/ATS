@@ -40,7 +40,7 @@ def merge_lora() -> None:
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_NAME)
     model = Phi3ForCausalLM.from_pretrained(
         BASE_MODEL_NAME,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         low_cpu_mem_usage=True,
     )
 
