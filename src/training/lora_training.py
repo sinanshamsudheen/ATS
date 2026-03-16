@@ -14,10 +14,15 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    DataCollatorForLanguageModeling,
     Trainer,
     TrainingArguments,
 )
+
+try:
+    from trl import DataCollatorForCompletionOnlyLM
+except ImportError:
+    from trl.trainer import DataCollatorForCompletionOnlyLM
+
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 
 
@@ -115,9 +120,7 @@ def tokenize_dataset(data: list, tokenizer, max_seq_length: int = 2048):
     texts = [s["text"] for s in data]
 
     def _tokenize_fn(examples):
-        tok = tokenizer(examples["text"], truncation=True, max_length=max_seq_length, padding="max_length")
-        tok["labels"] = tok["input_ids"].copy()
-        return tok
+        return tokenizer(examples["text"], truncation=True, max_length=max_seq_length, padding=False)
 
     dataset = Dataset.from_dict({"text": texts})
     return dataset.map(_tokenize_fn, batched=True, remove_columns=["text"])
@@ -205,7 +208,11 @@ def run_training(
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        data_collator=DataCollatorForCompletionOnlyLM(
+            response_template=train_cfg.get("response_template", "<|assistant|>"),
+            tokenizer=tokenizer,
+            mlm=False,
+        ),
     )
 
     # 6. Train

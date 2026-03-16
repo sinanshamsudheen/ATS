@@ -54,6 +54,9 @@ train_dataset: "data/train.json"
 validation_dataset: "data/validation.json"
 raw_dataset: "data/raw_dataset.json"
 
+# Response template for DataCollatorForCompletionOnlyLM (prompt masking)
+response_template: "<|assistant|>"
+
 # Dataset split
 train_split: 0.9
 validation_split: 0.1
