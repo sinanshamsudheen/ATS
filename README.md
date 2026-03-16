@@ -15,32 +15,31 @@ AI-powered resume optimiser that scores resumes against job descriptions, identi
 
 ```
 ATS/
+├── ats_fine_tuning_pipeline.ipynb      # Root-level copy of the Colab notebook
 ├── colab/
 │   ├── ats_fine_tuning_pipeline.ipynb  # Single end-to-end Colab notebook
 │   ├── ats_phi_lora/                   # Trained LoRA adapter weights
 │   │   ├── adapter_config.json
-│   │   ├── adapter_model.safetensors
+│   │   └── adapter_model.safetensors
 │   ├── configs/
 │   │   ├── lora_config.yaml            # LoRA hyperparameters
 │   │   └── training_config.yaml        # Training & model settings
-│   └── data/
-│       ├── raw_dataset.json            # 200 synthetic samples
-│       ├── train.json                  # 180 training samples
-│       └── validation.json             # 20 validation samples
-├── configs/
-│   ├── lora_config.yaml                # LoRA hyperparameters (local)
-│   └── training_config.yaml            # Training & model settings (local)
-├── data/
-│   ├── raw_dataset.json                # 200 synthetic samples
-│   ├── train.json                      # 180 training samples
-│   └── validation.json                 # 20 validation samples
+│   ├── data/
+│   │   ├── raw_dataset.json            # 200 synthetic samples
+│   │   ├── train.json                  # 180 training samples
+│   │   └── validation.json             # 20 validation samples
+│   ├── fix_dataset.py                  # Dataset repair / validation script
+│   ├── generate_notebook.py            # Regenerate notebook from scratch
+│   ├── merge_and_convert.py            # Merge LoRA → base → GGUF
+│   └── train_model.py                  # Train Phi-3 + LoRA (requires GPU)
 ├── models/
-│   ├── fine-tuned/                     # Merged HF model (intermediate, before GGUF)
 │   ├── phi3-ats-q8_0.gguf              # Final quantised model (Q8_0, ~3.8 GB)
-│   └── huggingface_cache/              # Cached sentence-transformers model
+│   └── huggingface_cache/              # Cached HuggingFace model files
 ├── scripts/
-│   ├── train_model.py                  # Train Phi-3 + LoRA (requires GPU)
-│   └── merge_and_convert.py            # Merge LoRA → base → GGUF (one-shot)
+│   ├── fix_dataset.py                  # Dataset repair / validation script
+│   ├── generate_notebook.py            # Regenerate notebook from scratch
+│   ├── merge_and_convert.py            # Merge LoRA → base → GGUF (one-shot)
+│   └── train_model.py                  # Train Phi-3 + LoRA (requires GPU)
 ├── src/
 │   ├── config.py                       # Central configuration & env setup
 │   ├── parsing/
@@ -50,9 +49,12 @@ ATS/
 │   │   ├── dataset_loader.py           # Dataset prep functions
 │   │   └── lora_training.py            # LoRA training pipeline
 │   ├── inference/
+│   │   ├── _prompts.py                 # Phi-3 prompt templates
 │   │   ├── gguf_inference.py           # Primary — llama-cpp GGUF inference
 │   │   ├── generate_report.py          # HF Phi-3 + LoRA inference (training use)
 │   │   └── groq_inference.py           # Cloud fallback — Groq + Llama 3.1 8B
+│   ├── scoring/
+│   │   └── keyword_scorer.py           # Keyword matching utilities
 │   └── app/
 │       ├── streamlit_app.py            # Streamlit web UI
 │       └── components/
@@ -175,7 +177,7 @@ python scripts/merge_and_convert.py  # → models/phi3-ats-q8_0.gguf
 
 ## Training Notes
 
-- **Response-only label masking** — the training loss is computed only on the `### Response:` section of each prompt. Prompt tokens are masked with `-100` so the model learns to generate answers, not memorise inputs.
+- **Response-only label masking** — `DataCollatorForCompletionOnlyLM(response_template='<|assistant|>')` from TRL masks all prompt tokens with `-100`. The model only sees gradients for the completion portion. Hand-coded token-ID masking was replaced after it silently produced `train_loss=0.0` / `eval_loss=nan` due to BPE context-dependence.
 - **EOS token** — Phi-3 uses `<|end|>` as its end-of-sequence token. Using the wrong token (e.g. `<|endoftext|>`) causes the model to never learn to terminate generation cleanly.
 - **No `trust_remote_code` for model loading** — `transformers>=4.41.0` ships native `Phi3ForCausalLM`. Passing `trust_remote_code=True` to `AutoModelForCausalLM` downloads a stale cached `modeling_phi3.py` that is incompatible with the current `transformers` KV cache API (`DynamicCache.seen_tokens` was removed) and causes runtime errors. Use `Phi3ForCausalLM` directly.
 - **`ensure_weight_tying` must be `false`** — setting this to `true` in `adapter_config.json` causes PEFT to try to resolve `base_model.model.model.model.embed_tokens`, which does not exist in the checkpoint. Leave it `false`.
@@ -194,6 +196,33 @@ python scripts/merge_and_convert.py  # → models/phi3-ats-q8_0.gguf
 ---
 
 ## Changelog
+
+### v4.0.0 — Dataset Fixes, Notebook Rebuild & Script Consolidation
+
+**New Features:**
+- **`scripts/generate_notebook.py`** — regenerates `ats_fine_tuning_pipeline.ipynb` from scratch (25 clean cells, down from 107 broken cells). Run this if the notebook becomes corrupted.
+- **`scripts/fix_dataset.py`** — validates and repairs `data/raw_dataset.json`; ensures all 200 samples have the correct output key (`weak_bullets`, not `weak_bullet_analysis`) and required fields.
+- **`src/inference/_prompts.py`** — Phi-3 native prompt templates extracted into a dedicated module.
+- **Colab-ready notebook** — `colab/ats_fine_tuning_pipeline.ipynb` verified to run end-to-end on a T4 GPU; all 6 phases pass without intervention.
+
+**Bug Fixes:**
+- Fixed `DataCollatorForCompletionOnlyLM` label masking — replaced hand-coded token-ID search with TRL's `response_template='<|assistant|>'`. The original approach silently masked nothing (BPE context-dependence), causing `train_loss=0.0` and `eval_loss=nan`.
+- Fixed `warmup_steps: 100` exceeding total training steps (~56) with 200 samples — changed to `warmup_ratio: 0.03`.
+- Fixed `optim: adamw_torch` → `paged_adamw_32bit` for 4-bit QLoRA compatibility on Colab T4.
+- Corrected dataset output key from `weak_bullet_analysis` → `weak_bullets` across all 200 samples.
+
+**Files Changed:**
+| File | Change |
+|------|--------|
+| `scripts/generate_notebook.py` | **NEW** — notebook regeneration script |
+| `scripts/fix_dataset.py` | **NEW** — dataset validation & repair |
+| `src/inference/_prompts.py` | **NEW** — Phi-3 prompt templates module |
+| `ats_fine_tuning_pipeline.ipynb` | Rebuilt — 25 cells, Colab-ready |
+| `colab/ats_fine_tuning_pipeline.ipynb` | Rebuilt — mirrors root notebook |
+| `configs/training_config.yaml` | `warmup_ratio: 0.03`, `optim: paged_adamw_32bit` |
+| `data/raw_dataset.json` | Fixed output key, all 200 samples validated |
+
+---
 
 ### v3.0.0 — Local-First CPU Inference via GGUF
 
