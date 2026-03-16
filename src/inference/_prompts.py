@@ -134,17 +134,19 @@ CORRECT OUTPUT:
 # User prompt template
 # ---------------------------------------------------------------------------
 
-USER_PROMPT_TEMPLATE = """\
-{few_shot}
+# Escape braces in few-shot examples so they survive the .format() call in generate()
+_FEW_SHOT_ESCAPED = _FEW_SHOT_EXAMPLES.replace("{", "{{").replace("}", "}}")
+
+USER_PROMPT_TEMPLATE = _FEW_SHOT_ESCAPED + """\
 ## Your Task
 
 ### Input Data
 
 RESUME:
-{{resume_text}}
+{resume_text}
 
 JOB DESCRIPTION:
-{{job_description}}
+{job_description}
 
 ### Analysis Steps  (work through these mentally before writing JSON)
 1. Extract every skill / tool / technology explicitly named in the JD.
@@ -158,5 +160,4 @@ lack a measurable result, use weak/passive verbs, or are shorter than 8 words.
 8. Compute final ats_score using the weighted formula.
 
 ### Output
-Return ONLY the JSON object below — no markdown, no commentary:\
-""".format(few_shot=_FEW_SHOT_EXAMPLES)
+Return ONLY the JSON object below — no markdown, no commentary:"""

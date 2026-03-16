@@ -166,6 +166,11 @@ if analyze_button:
                 except Exception as _local_err:
                     st.warning(f"⚠️ Local model failed: {_local_err} — falling back to Groq")
 
+            # Also fall back to Groq if local model returned invalid/unparseable JSON
+            if llm_report is not None and not llm_report.get("valid_json"):
+                st.warning(f"⚠️ Local model output invalid — falling back to Groq")
+                llm_report = None
+
             if llm_report is None:
                 if is_groq_available():
                     status_text.info("🤖 Running Groq + Llama 3.1 8B inference...")

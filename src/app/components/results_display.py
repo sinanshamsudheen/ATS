@@ -57,6 +57,29 @@ def display_llm_ats_report(report: Dict[str, Any]):
     ats_score = report.get("ats_score", 0)
     _metric_card("Overall ATS Score", ats_score, "/100")
 
+    # ── Score Breakdown ───────────────────────────────────────────────────────
+    breakdown = report.get("score_breakdown", {})
+    if breakdown and any(v for v in breakdown.values() if isinstance(v, (int, float)) and v > 0):
+        st.markdown("### 📊 Score Breakdown")
+        labels = {
+            "keyword_coverage": "Keyword Coverage",
+            "bullet_quality":   "Bullet Quality",
+            "formatting":       "Formatting",
+            "structure":        "Structure",
+        }
+        for key, label in labels.items():
+            val = breakdown.get(key, 0)
+            color = _get_score_color(val)
+            st.markdown(
+                f"<div style='display:flex; align-items:center; margin-bottom:8px;'>"
+                f"<span style='width:160px; font-size:13px;'>{label}</span>"
+                f"<div style='flex:1; background:#333; border-radius:4px; height:12px; margin:0 10px;'>"
+                f"<div style='width:{val}%; background:{color}; border-radius:4px; height:12px;'></div></div>"
+                f"<span style='width:40px; text-align:right; font-size:13px; color:{color}; font-weight:bold;'>{val}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
     st.markdown("---")
 
     # ── Matched / Missing Skills ──────────────────────────────────────────────

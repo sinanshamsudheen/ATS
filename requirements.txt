@@ -29,6 +29,7 @@ streamlit>=1.28.0
 
 # Utilities
 tqdm>=4.65.0
+json-repair>=0.28.0
 
 # GGUF CPU inference
 llama-cpp-python>=0.3.2
