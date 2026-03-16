@@ -18,6 +18,7 @@ AI-powered resume optimiser that scores resumes against job descriptions, identi
 
 ```
 ATS/
+├── ats_fine_tuning_pipeline.ipynb      # Root-level copy of the Colab notebook
 ├── colab/
 │   ├── ats_fine_tuning_pipeline.ipynb  # Single end-to-end Colab notebook
 │   ├── ats_phi_lora/                   # Trained LoRA adapter weights (generated)
@@ -52,6 +53,8 @@ ATS/
 │   │   ├── gguf_inference.py           # Primary — llama-cpp GGUF inference
 │   │   ├── generate_report.py          # HF Phi-3 + LoRA inference (training use)
 │   │   └── groq_inference.py           # Cloud fallback — Groq + Llama 3.1 8B
+│   ├── scoring/
+│   │   └── keyword_scorer.py           # Keyword matching utilities
 │   └── app/
 │       ├── streamlit_app.py            # Streamlit web UI
 │       └── components/
@@ -175,7 +178,7 @@ python scripts/merge_and_convert.py  # → models/phi3-ats-q8_0.gguf
 
 ## Training Notes
 
-- **Response-only label masking** — the training loss is computed only on the `### Response:` section of each prompt. Prompt tokens are masked with `-100` so the model learns to generate answers, not memorise inputs.
+- **Response-only label masking** — `DataCollatorForCompletionOnlyLM(response_template='<|assistant|>')` from TRL masks all prompt tokens with `-100`. The model only sees gradients for the completion portion. Hand-coded token-ID masking was replaced after it silently produced `train_loss=0.0` / `eval_loss=nan` due to BPE context-dependence.
 - **EOS token** — Phi-3 uses `<|end|>` as its end-of-sequence token. Using the wrong token (e.g. `<|endoftext|>`) causes the model to never learn to terminate generation cleanly.
 - **No `trust_remote_code` for model loading** — `transformers>=4.41.0` ships native `Phi3ForCausalLM`. Passing `trust_remote_code=True` to `AutoModelForCausalLM` downloads a stale cached `modeling_phi3.py` that is incompatible with the current `transformers` KV cache API (`DynamicCache.seen_tokens` was removed) and causes runtime errors. Use `Phi3ForCausalLM` directly.
 - **`ensure_weight_tying` must be `false`** — setting this to `true` in `adapter_config.json` causes PEFT to try to resolve `base_model.model.model.model.embed_tokens`, which does not exist in the checkpoint. Leave it `false`.
