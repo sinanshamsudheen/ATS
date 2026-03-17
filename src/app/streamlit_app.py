@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import sys
 import os
@@ -11,7 +12,8 @@ from src.parsing.pdf_extractor import extract_text_from_pdf
 from src.parsing.resume_parser import ResumeParser
 from src.app.components.results_display import display_llm_ats_report
 from src.config import APP_TITLE, APP_VERSION, GGUF_MODEL_PATH, BASE_MODEL_NAME, LORA_ADAPTER_PATH
-from src.inference.groq_inference import generate_with_groq, is_groq_available
+from src.inference.groq_inference import generate_with_groq, generate_bullet_improvements, is_groq_available
+from src.scoring.keyword_scorer import compute_overlap
 
 
 @st.cache_resource(show_spinner=False)
@@ -37,6 +39,84 @@ def _load_local_inference():
         return _groq_gen, "Groq (Llama 3.1 8B)"
 
     return None, None
+
+
+def _skill_in_text(skill: str, text_lower: str) -> bool:
+    """Check if a skill appears in text using word-boundary matching.
+
+    Plain substring matching (``skill in text``) produces false positives
+    for short terms like "AI" matching inside "detail" or "email".
+    """
+    return bool(re.search(r"\b" + re.escape(skill) + r"\b", text_lower))
+
+
+def _apply_keyword_guardrail(report: dict, resume_text: str, jd_text: str) -> dict:
+    """Hybrid skill validation: deterministic vocab + verified model claims.
+
+    1. Run the deterministic ~300-term vocabulary scorer for ground truth.
+    2. For each skill the MODEL claims is matched, verify it actually appears
+       (word-boundary check) in BOTH the resume AND JD text.  Keep only verified ones.
+    3. Union both sets — this gives broad coverage without hallucinations.
+    4. Recalculate keyword_coverage and ats_score.
+    5. Apply domain-mismatch penalty: if keyword_coverage < 20, cap ats_score.
+    """
+    if not report.get("valid_json"):
+        return report
+
+    resume_lower = resume_text.lower()
+    jd_lower = jd_text.lower()
+
+    # Layer 1: deterministic vocabulary overlap
+    overlap = compute_overlap(resume_text, jd_text)
+    deterministic_matched = set(overlap["matched"])
+
+    # Layer 2: verify each model-reported matched skill against raw text
+    # using word-boundary regex to avoid substring false positives
+    model_matched = report.get("matched_skills", [])
+    verified_model = set()
+    for skill in model_matched:
+        skill_lower = skill.lower().strip()
+        if skill_lower and _skill_in_text(skill_lower, resume_lower) and _skill_in_text(skill_lower, jd_lower):
+            verified_model.add(skill_lower)
+
+    # Union of both layers
+    all_matched = deterministic_matched | verified_model
+
+    # Missing = JD skills from deterministic scorer that aren't matched
+    deterministic_jd_skills = set(overlap["matched"]) | set(overlap["missing"])
+    all_missing = deterministic_jd_skills - all_matched
+
+    report["matched_skills"] = sorted(all_matched)
+    report["missing_skills"] = sorted(all_missing)
+
+    # Recompute keyword_coverage using the broader match set
+    if deterministic_jd_skills:
+        coverage = int(round(len(all_matched) / len(deterministic_jd_skills) * 100))
+    else:
+        # No JD skills in vocab — fall back to model's original coverage
+        coverage = report.get("score_breakdown", {}).get("keyword_coverage", 0)
+
+    bd = report.get("score_breakdown", {})
+    bd["keyword_coverage"] = min(coverage, 100)
+    report["score_breakdown"] = bd
+
+    # Recalculate weighted ats_score
+    raw_score = round(
+        bd.get("keyword_coverage", 0) * 0.50
+        + bd.get("bullet_quality", 0) * 0.25
+        + bd.get("formatting", 0) * 0.15
+        + bd.get("structure", 0) * 0.10
+    )
+
+    # Domain-mismatch penalty: if keyword overlap is very low, the resume and
+    # JD are likely in unrelated fields.  Cap the overall score so a
+    # well-formatted but irrelevant resume cannot score above 20.
+    if bd["keyword_coverage"] < 20:
+        raw_score = min(raw_score, 20)
+
+    report["ats_score"] = raw_score
+
+    return report
 
 
 # Page Config
@@ -181,6 +261,19 @@ if analyze_button:
                         st.warning(f"⚠️ Groq inference failed: {_llm_err}")
                 else:
                     st.warning("⚠️ No inference backend available. Set GROQ_API_KEY or run merge_and_convert.py.")
+
+            # Step 4: Post-process — override hallucinated skills with deterministic overlap
+            if llm_report and llm_report.get("valid_json"):
+                llm_report = _apply_keyword_guardrail(llm_report, text, job_description)
+
+            # Step 5: If Phi-3 produced the report, supplement with Groq bullet improvements
+            if llm_report and llm_report.get("valid_json") and is_groq_available():
+                weak = llm_report.get("weak_bullets", [])
+                if not weak:
+                    status_text.info("🔧 Generating bullet improvements via Groq...")
+                    bullets = generate_bullet_improvements(text, job_description)
+                    if bullets:
+                        llm_report["weak_bullets"] = bullets
 
             os.unlink(tmp_path)
             progress_bar.progress(100)

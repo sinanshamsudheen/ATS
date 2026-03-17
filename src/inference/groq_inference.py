@@ -167,6 +167,58 @@ def generate_with_groq(resume_text: str, job_description: str) -> Dict[str, Any]
     return client.generate(resume_text, job_description)
 
 
+def generate_bullet_improvements(resume_text: str, job_description: str) -> list:
+    """Use Groq to generate weak bullet improvements only.
+
+    Called as a supplement when Phi-3 GGUF handles the main analysis but
+    lacks the context window to produce quality bullet rewrites.
+    Returns a list of {"original", "issue", "improved"} dicts, or [].
+    """
+    if not is_groq_available():
+        return []
+
+    system = (
+        "You are a resume bullet point optimizer. Given a resume and job description, "
+        "identify the 3-5 weakest bullet points and rewrite them with action verbs, "
+        "metrics, and impact. Respond with ONLY a JSON array of objects, each with "
+        '"original" (verbatim from resume), "issue" (specific problem), and '
+        '"improved" (rewritten bullet). No markdown, no prose.'
+    )
+    user = f"RESUME:\n{resume_text}\n\nJOB DESCRIPTION:\n{job_description}"
+
+    try:
+        client = GroqInference()
+        from groq import RateLimitError, APIError
+        response = client._client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=1024,
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content
+        # Extract JSON array from response
+        match = re.search(r'\[[\s\S]*\]', raw)
+        if match:
+            bullets = json.loads(match.group())
+            if isinstance(bullets, list):
+                return [
+                    {
+                        "original": b.get("original", ""),
+                        "issue": b.get("issue", ""),
+                        "improved": b.get("improved", ""),
+                    }
+                    for b in bullets
+                    if isinstance(b, dict) and b.get("original", "").strip()
+                ]
+    except Exception as e:
+        logger.warning(f"Groq bullet improvement call failed: {e}")
+
+    return []
+
+
 def is_groq_available() -> bool:
     """Check if Groq is configured and available."""
     api_key = GROQ_API_KEY or os.getenv("GROQ_API_KEY")

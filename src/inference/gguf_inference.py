@@ -79,11 +79,14 @@ def _extract_json(text: str) -> Optional[dict]:
     except json.JSONDecodeError:
         pass
 
-    # 3. Extract outermost {...} then parse
-    match = re.search(r"\{[\s\S]*\}", text)
-    if match:
+    # 3. Find the FIRST complete {...} using a brace-depth counter.
+    #    The old greedy regex r"\{[\s\S]*\}" would span across multiple
+    #    JSON objects when the model keeps generating after the first one,
+    #    producing invalid JSON.
+    first_obj = _extract_first_json_object(text)
+    if first_obj is not None:
         try:
-            return _normalize(json.loads(match.group()))
+            return _normalize(json.loads(first_obj))
         except json.JSONDecodeError:
             pass
 
@@ -97,6 +100,37 @@ def _extract_json(text: str) -> Optional[dict]:
     except Exception:
         pass
 
+    return None
+
+
+def _extract_first_json_object(text: str) -> Optional[str]:
+    """Return the first balanced top-level {...} substring, or None."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            if in_string:
+                escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
     return None
 
 
@@ -129,11 +163,15 @@ def _normalize(result: dict) -> dict:
         if isinstance(b, str):
             normalised.append({"original": b, "issue": "", "improved": b})
         elif isinstance(b, dict):
-            normalised.append({
+            entry = {
                 "original": b.get("original") or b.get("bullet") or "",
                 "issue":    b.get("issue")    or b.get("problem") or "",
                 "improved": b.get("improved") or b.get("rewrite") or b.get("improvement") or "",
-            })
+            }
+            # Drop entries where the model left original blank (common with
+            # the GGUF model due to its tight 4096-token context window)
+            if entry["original"].strip():
+                normalised.append(entry)
     result["weak_bullets"] = normalised
 
     # score_breakdown: fill any missing sub-scores with 0
