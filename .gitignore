@@ -167,6 +167,5 @@ data/processed/*.jsonl
 
 # Model files (too large for GitHub)
 *.gguf
-*.safetensors
 *.pt
 *.pth
