@@ -53,8 +53,7 @@ ATS/
 │   │   ├── gguf_inference.py           # Primary — llama-cpp GGUF inference
 │   │   ├── generate_report.py          # HF Phi-3 + LoRA inference (training use)
 │   │   └── groq_inference.py           # Cloud fallback — Groq + Llama 3.1 8B
-│   ├── scoring/
-│   │   └── keyword_scorer.py           # Keyword matching utilities
+│   ├── rewriting/                      # Legacy (unused post-v3.0.0)
 │   └── app/
 │       ├── streamlit_app.py            # Streamlit web UI
 │       └── components/
@@ -103,9 +102,11 @@ Pass `--quant q4_k_m` for a smaller (~2.3 GB) but slightly lower-quality model.
 streamlit run src/app/streamlit_app.py
 ```
 
-Upload a PDF resume, paste a job description, and click **Analyze & Optimize**.
+Upload a PDF resume, paste a job description, and click **Analyze Resume**.
 
-The sidebar shows which inference backend is active (GGUF / Groq).
+Results are shown in two tabs:
+- **AI Report** — colour-coded ATS score, sub-score breakdown, matched/missing skills, weak-bullet rewrites, formatting issues, and overall feedback.
+- **Raw Data** — the parsed resume sections as JSON (useful for debugging).
 
 ### 4. (Optional) Configure API keys
 
@@ -134,6 +135,8 @@ The app resolves inference in priority order at startup:
 | 2 — Cloud | **Groq API** | Llama 3.1 8B Instant | Requires `GROQ_API_KEY` in `.env` |
 
 The active backend is shown in the sidebar. Analysis still works if only Groq is available.
+
+**Bullet improvement supplementation** — when GGUF handles the main analysis *and* Groq is also configured, the app makes a second lightweight Groq call (`generate_bullet_improvements`) to produce higher-quality weak-bullet rewrites. This is because the 4 k context window of the GGUF model limits its ability to generate detailed bullet suggestions. The supplementation is skipped silently if Groq is unavailable or the GGUF report already contains `weak_bullets`.
 
 ## Fine-Tuning Pipeline
 
