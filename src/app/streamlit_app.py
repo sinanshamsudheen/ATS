@@ -14,6 +14,7 @@ from src.app.components.results_display import display_llm_ats_report
 from src.config import APP_TITLE, APP_VERSION, GGUF_MODEL_PATH, BASE_MODEL_NAME, LORA_ADAPTER_PATH
 from src.inference.groq_inference import generate_with_groq, generate_bullet_improvements, is_groq_available
 from src.scoring.keyword_scorer import compute_overlap
+from src.scoring.resume_scorer import score_bullet_quality, score_formatting, score_structure
 
 
 @st.cache_resource(show_spinner=False)
@@ -98,6 +99,16 @@ def _apply_keyword_guardrail(report: dict, resume_text: str, jd_text: str) -> di
 
     bd = report.get("score_breakdown", {})
     bd["keyword_coverage"] = min(coverage, 100)
+
+    # If the model omitted or zeroed out sub-scores, fill them deterministically
+    # from the resume text so the final ats_score isn't dragged down to 50 or below.
+    if bd.get("bullet_quality", 0) < 10:
+        bd["bullet_quality"] = score_bullet_quality(resume_text)
+    if bd.get("formatting", 0) < 10:
+        bd["formatting"] = score_formatting(resume_text)[0]
+    if bd.get("structure", 0) < 10:
+        bd["structure"] = score_structure(resume_text)
+
     report["score_breakdown"] = bd
 
     # Recalculate weighted ats_score
